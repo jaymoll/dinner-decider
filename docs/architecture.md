@@ -41,11 +41,11 @@ The design must make invalid states difficult to create: incompatible units must
 
 - The application is an early Laravel starter with no Dinner Decider domain models or tables yet.
 - The runtime is PHP 8.5.8, Laravel 13.20.0, Livewire 4.3.3, Flux UI 2.15.0, and MySQL 8.4.
-- composer.json currently declares PHP ^8.3, so PHP 8.3 is the supported language minimum unless the constraint is deliberately raised; this architecture does not require PHP 8.5-only syntax.
+- composer.json declares PHP ^8.3. CI supports PHP 8.3/Node 22.12 as the minimum pair and PHP 8.5/Node 24 as the preferred Docker runtime; this architecture does not require PHP 8.5-only syntax.
 - Laravel Sail provides the Docker development environment.
 - The UI convention is Livewire 4 page single-file components under resources/views/pages, using the pages namespace and the lightning-bolt filename prefix.
-- Authentication is provided by Fortify with registration, password reset, email verification routes, two-factor authentication, passkeys, and login throttling.
-- The application uses database-backed sessions, cache, and queues. The queue tables exist, but no application job, worker service, or scheduled task exists.
+- Authentication is provided by Fortify with registration, password reset, enforced email verification, two-factor authentication, passkeys, and login throttling.
+- The application uses database-backed sessions and cache. Queues execute synchronously for the MVP; database queue tables are retained, but no application job, worker service, or scheduled task exists.
 - PHPUnit 12, Larastan level 7, and Pint are configured.
 - The existing application layer contains focused Fortify actions and an invokable Logout action.
 - The current database contains only users, authentication, session, cache, and queue infrastructure. Both the application and testing schemas have been migrated.
@@ -80,17 +80,17 @@ The resolved decisions add basic Cooked/Cancelled dinner history inside the roll
 - User-facing writes must be authorized and validated server-side even when the interface already constrains input.
 - Core correctness cannot depend on a queue worker because the current Compose stack does not run one.
 
-### 2.4 Existing inconsistencies and incomplete patterns
+### 2.4 Baseline hardening status and remaining incomplete patterns
 
-These are findings, not changes made by this document:
+Stage 0 resolved the original runtime and configuration inconsistencies. Remaining findings are deliberately postponed until their related feature is in scope:
 
-| Finding | Impact | Recommended treatment |
+| Finding or former gap | Current status | Follow-up |
 | --- | --- | --- |
-| Fortify email verification is enabled, but App\Models\User does not implement Illuminate\Contracts\Auth\MustVerifyEmail. | The verified middleware does not enforce verification for this model even though verification routes and tests exist. | Fix before protecting product routes with verified middleware; add a test proving an unverified user is denied. |
-| CI runs PHP 8.3 and Node 22, while Sail runs PHP 8.5 and Node 24. | PHP 8.3 does exercise the declared minimum, but CI does not exercise the actual container runtime; the intended support policy is undocumented. | Document the minimum/runtime policy and use runtime parity or an explicit minimum-plus-runtime matrix. |
-| .env.example selects MySQL at host mysql, but the GitHub Actions workflow declares no MySQL service and runs composer setup, which migrates immediately. | A clean CI run is expected to fail before tests. | Add a MySQL service to CI or provide an explicit CI SQLite configuration. MySQL integration coverage is preferred for locking and decimals. |
-| composer.json post-create-project still creates an SQLite file even though the project is MySQL-first. | Setup paths communicate conflicting database choices. | Remove the stale SQLite setup step when setup is next touched. |
-| The database queue is configured with after_commit false and no worker runs in Compose. | Queued side effects can race transactions and will not be processed locally unless a worker is started manually. | Keep MVP correctness synchronous; use explicit after-commit interfaces for future queued work and add a worker before relying on it. |
+| Fortify email verification was enabled without App\Models\User implementing Illuminate\Contracts\Auth\MustVerifyEmail. | Resolved: the contract is implemented and an unverified-route test proves enforcement. | Apply auth and verified middleware to MVP product routes. |
+| CI and Docker used different undocumented PHP/Node pairs. | Resolved: CI tests PHP 8.3/Node 22 and PHP 8.5/Node 24, and the support policy is documented. | Raise minimums only through an explicit compatibility decision. |
+| CI had no MySQL service despite the MySQL-oriented environment. | Resolved: both CI matrix jobs use a health-checked MySQL 8.4 service and run migrations before tests. | Add targeted locking and decimal integration tests with their domain features. |
+| Composer's post-create hook created an SQLite file. | Resolved: the stale hook was removed and setup uses MySQL. | Keep pure unit tests database-free rather than introducing a second database engine. |
+| The database queue was selected without a worker. | Resolved for the MVP: the default is sync and database queue infrastructure is retained but inactive. | Add a supervised worker and after-commit behavior before the first queued feature. |
 | boost.json has Sail disabled and Codex starts Boost through host PHP while DB_HOST is mysql. | Documentation tools work, but database-aware Boost tools may not reach the Docker network from host PHP. | Reconfigure the MCP command through Sail/Docker when Boost database tools are needed. |
 | The dashboard, logo, welcome screen, repository links, and README are still starter placeholders. | No domain navigation or product language exists yet. | Replace gradually during the feature milestones; this is not an architectural rewrite. |
 | The generated welcome view contains a large inline style block and some starter components contain substantial inline Alpine behavior. | This differs from the repository guideline that new JS and CSS should live in dedicated assets or component files. | Do not copy this pattern into product features; migrate only when those views are touched. |
@@ -918,9 +918,9 @@ Actions must not catch Throwable merely to return false. A transaction rolls bac
 
 Laravel Fortify remains the authentication backend and the existing Livewire/Flux pages remain the UI. The present features—registration, password reset, password confirmation, passkeys, and two-factor authentication—are compatible with this architecture and should not be replaced.
 
-Email verification is enabled in config/fortify.php and the dashboard route uses verified middleware. However, App\Models\User currently does not implement Illuminate\Contracts\Auth\MustVerifyEmail. That means the configured verification requirement is not effective. This is an existing inconsistency to correct when authentication work is next in scope, with a feature test proving an unverified user cannot reach verified routes.
+Email verification is enabled in config/fortify.php, App\Models\User implements Illuminate\Contracts\Auth\MustVerifyEmail, and the dashboard route uses verified middleware. Feature coverage proves an unverified user is redirected to the verification notice.
 
-MVP product routes require auth and, once the model contract issue is corrected, verified. Sensitive account operations continue to use password confirmation and Fortify's existing rate limits.
+MVP product routes require auth and verified middleware. Sensitive account operations continue to use password confirmation and Fortify's existing rate limits.
 
 ### 13.2 Authorization
 
@@ -967,7 +967,7 @@ Jobs are appropriate for slow, retriable, externally visible work: image process
 
 Do not queue reservation allocation, dinner cooking, or core grocery calculation. Queue failure must not leave the application's truth half-applied.
 
-The repository currently uses the database queue connection, has queue.connections.database.after_commit set to false, and has no worker service in compose.yaml. No MVP core behaviour may depend on a worker until deployment supplies a supervised worker. Before the first queued feature, enable after-commit dispatch at the connection or job/event level, add operational worker configuration, and test the failure/retry path.
+The repository currently uses the sync queue connection and has no worker service in compose.yaml. Database queue configuration and tables remain available but inactive. Before the first queued feature, enable after-commit dispatch at the connection or job/event level, add supervised worker configuration, and test failure and retry paths.
 
 ### 14.3 Notifications
 
@@ -1144,7 +1144,7 @@ If regeneration later becomes expensive, preserve the same pure GroceryCalculato
 
 ## 17. Testing strategy
 
-The test suite uses PHPUnit 12 through Laravel's test runner. At the time of review it contains 33 passing starter/authentication/settings tests with 81 assertions, but no Dinner Decider domain tests because product code has not yet been implemented.
+The test suite uses PHPUnit 12 through Laravel's test runner. After Stage 0 it contains 38 passing starter, authentication, settings, configuration, and health tests with 94 assertions, but no Dinner Decider domain tests because product code has not yet been implemented.
 
 ### 17.1 Test layers
 
@@ -1251,7 +1251,7 @@ Database transactions may be instrumented with duration and deadlock retry count
 
 ### 19.2 Runtime operations
 
-- Keep the existing framework health endpoint for process health. Add dependency checks only to a protected/deployment health mechanism so public requests do not expose database details.
+- Keep the framework `/up` endpoint for process health. Docker checks it directly, while MySQL readiness is enforced separately through the database container health check and migration/integration gates. Add any future dependency details only to a protected deployment mechanism.
 - Run migrations as a single release step before new containers accept traffic. Never run destructive schema changes and application cutovers without a compatible transition.
 - Back up MySQL and test restoration. A backup is not proven until restore verification succeeds.
 - Configure failed-job retention and alerts before enabling queued features.
@@ -1261,15 +1261,13 @@ Database transactions may be instrumented with duration and deadlock retry count
 
 ### 19.3 Current operational gaps
 
-The Docker development environment is usable, but the following repository state should be addressed independently of architecture implementation:
+Stage 0 added a health-checked MySQL 8.4 CI service, minimum/runtime PHP and Node matrix, deterministic Composer/npm setup, and Docker liveness/readiness checks. Remaining operational work is feature- or deployment-driven:
 
-- The CI workflow targets PHP 8.3/Node 22 while the Sail container runs PHP 8.5/Node 24. Either a documented minimum-version matrix or runtime parity is needed.
-- The workflow runs composer setup against the MySQL-oriented .env.example but declares no MySQL service, so a clean CI run is unlikely to prove the configured database path.
-- Composer's post-create script still creates database/database.sqlite even though MySQL is the configured application database.
-- Database queue configuration has after_commit disabled and Compose has no queue worker. This is harmless while nothing is queued but must be corrected before queued behaviour ships.
-- boost.json says sail is false and .codex/config.toml invokes host php while DB_HOST=mysql is only resolvable on the Compose network. Database-aware tooling may therefore fail outside the container.
+- Database queues remain deliberately inactive until a supervised worker, after-commit dispatch, retry policy, and monitoring are introduced.
+- boost.json says sail is false and .codex/config.toml invokes host php while DB_HOST=mysql is only resolvable on the Compose network. Reconfigure this only when database-aware Boost tooling is needed.
+- Production backup/restore, scheduler, migration, rollback, and worker runbooks remain part of deployment hardening.
 
-These are incremental configuration fixes, not reasons to reorganize the application.
+These are incremental operational tasks, not reasons to reorganize the application.
 
 ## 20. Security considerations
 
@@ -1277,7 +1275,7 @@ Security is enforced through ordinary Laravel controls plus domain-specific owne
 
 ### 20.1 Application controls
 
-- Require authenticated, verified sessions for product screens after correcting the User verification contract.
+- Require authenticated, verified sessions for product screens; the User verification contract and enforcement coverage are in place.
 - Authorize every read and mutation; scope relationship queries by the current owner to prevent insecure direct object references.
 - Keep CSRF protection on state-changing web requests and use POST/PATCH/DELETE semantics instead of mutating GET routes.
 - Use validated field lists and explicit model fillable/guarded decisions. Do not pass unfiltered arrays to create, update, forceFill, or query ordering.
@@ -1397,16 +1395,19 @@ Prefer these framework mechanisms over custom equivalents.
 
 There is no legacy Dinner Decider domain implementation to rewrite. The application is a clean Laravel/Livewire/Fortify starter, so build vertical slices while retaining its working authentication/settings code.
 
-### Stage 0 — Baseline hardening
+### Stage 0 — Baseline hardening (complete)
 
-- Correct MustVerifyEmail integration and add the verified-route test.
-- Decide/document supported PHP/Node versions and make CI use a MySQL service.
-- Remove or clarify the SQLite post-create step for this MySQL-only project.
-- Configure the English-only interface with Europe/Amsterdam presentation time, DD-MM-YYYY, 24-hour time, Monday-first calendars, metric units, and comma/point decimal input while retaining UTC storage.
-- Add ext-bcmath to Composer platform requirements because product correctness depends on it; the Docker runtime already has the extension.
-- Keep database queue features disabled unless a worker/after-commit setup is added.
+Completed on 17 July 2026:
 
-This stage resolves existing inconsistencies; it does not introduce domain layering for its own sake.
+- App\Models\User implements MustVerifyEmail and verified-route enforcement is tested.
+- PHP 8.3/Node 22.12 minimums and the PHP 8.5/Node 24 Docker runtime are documented and tested in CI against MySQL 8.4.
+- MySQL-only setup is deterministic; the stale SQLite post-create step is removed.
+- The English-only Europe/Amsterdam presentation contract is configured while application storage remains UTC.
+- ext-bcmath is a Composer platform requirement and is verified in the Docker runtime.
+- Queues execute synchronously until a supervised worker and after-commit behavior are introduced.
+- Docker enforces MySQL readiness and Laravel `/up` liveness during bounded startup.
+
+Stage 0 resolved baseline inconsistencies without introducing domain layering.
 
 ### Stage 1 — Measurement, catalogue, and serving scale (Epics 1, 2, and 4)
 

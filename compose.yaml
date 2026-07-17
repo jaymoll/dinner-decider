@@ -22,7 +22,20 @@ services:
         networks:
             - sail
         depends_on:
-            - mysql
+            mysql:
+                condition: service_healthy
+        healthcheck:
+            test:
+                - CMD
+                - curl
+                - '--fail'
+                - '--silent'
+                - '--show-error'
+                - 'http://127.0.0.1/up'
+            start_period: 20s
+            interval: 10s
+            timeout: 5s
+            retries: 6
     mysql:
         image: 'mysql:8.4'
         ports:
@@ -41,13 +54,11 @@ services:
         networks:
             - sail
         healthcheck:
-            test:
-                - CMD
-                - mysqladmin
-                - ping
-                - '-p${DB_PASSWORD}'
-            retries: 3
+            test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent"]
+            start_period: 10s
+            interval: 5s
             timeout: 5s
+            retries: 12
 networks:
     sail:
         driver: bridge
