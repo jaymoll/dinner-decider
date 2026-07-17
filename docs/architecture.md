@@ -3,6 +3,7 @@
 Status: Proposed architecture for the MVP  
 Last reviewed: 2026-07-17  
 Source of functional scope: Dinner Decider MVP Product Specification.docx  
+Resolved product decisions: Dinner Decider — Remaining MVP Product Decisions
 Target runtime: PHP 8.5, Laravel 13, Livewire 4, Flux UI 2, MySQL 8.4
 
 ## Reading this document
@@ -65,6 +66,8 @@ The MVP specification defines eight epics:
 8. Grocery List Generation
 
 Explicitly excluded from the MVP are AI recipe generation, recipe imports, substitutions, dietary profiles, shared households, expiry tracking, package rounding, prices, barcode scanning, imperial units, approximate conversions, and automatic multi-dinner plan generation. The architecture must not smuggle these features back in as speculative abstractions.
+
+The resolved decisions add basic Cooked/Cancelled dinner history inside the rolling plan because it is needed for snapshots, duplication, and restore. This does not add the richer cooking-history/ratings feature excluded by the original specification.
 
 ### 2.3 Technical constraints
 
@@ -251,7 +254,7 @@ The system is deployed as a web application plus MySQL. In development, Sail run
 
 ### 6.2 Ingredients and Measurements
 
-**Owns:** Ingredient catalogue entries, aliases, categories, staple status, units, compatibility rules, package definitions, quantity parsing, normalization, arithmetic, and display formatting.
+**Owns:** Ingredient catalogue entries, aliases, categories, staple and current-availability state, units, compatibility rules, package definitions, quantity parsing, normalization, arithmetic, and display formatting.
 
 **Depends on:** Identity only for ownership.
 
@@ -277,7 +280,7 @@ This is the lowest-level product module. It must not depend on recipes, pantry s
 
 ### 6.5 Dinner Planning and Reservations
 
-**Owns:** The active DinnerPlan, PlannedDinner occurrences, selected servings, optional date, order, state transitions, requirement snapshots, allocation of pantry entries, shortfalls, reservation release, and cooking consumption.
+**Owns:** One rolling DinnerPlan per user, active PlannedDinner ordering, cooked/cancelled history, duplication/restoration, selected servings, optional date, recipe/requirement snapshots, priority-based allocation of pantry entries, shortfalls, reservation release, and cooking consumption.
 
 **Depends on:** Recipes, Pantry, and Measurements.
 
@@ -293,7 +296,7 @@ This is the transactional center of the application. It coordinates rather than 
 
 ### 6.7 Groceries
 
-**Owns:** One grocery list for the active dinner plan, generated items, manual items, check state, categories, source contributions, and regeneration.
+**Owns:** One grocery list for the rolling dinner plan, generated items, temporary generated-quantity overrides, manual items, check/change state, categories, source contributions, completed-item clearing, and regeneration.
 
 **Depends on:** PlannedDinnerRequirement, IngredientReservation, Ingredients, and Measurements.
 
@@ -318,13 +321,13 @@ Recommendations and Groceries must not call each other. Cross-module mutations a
 | Epic | Primary module | Supporting components |
 | --- | --- | --- |
 | 1. Ingredient and Measurement System | Ingredients and Measurements | Quantity value object, QuantityInputParser, UnitConverter, QuantityFormatter, ingredient policies |
-| 2. Recipe Catalogue | Recipes | Recipe actions, Eloquent relationships, RecipeForm, image storage, archive behavior |
-| 3. Pantry Management | Pantry | Pantry actions, balance query, allocator, reservations aggregate |
+| 2. Recipe Catalogue | Recipes | Minimum fields, nullable metadata, RecipeForm, image placeholder/storage, archive/history snapshots |
+| 3. Pantry Management | Pantry | Stock/availability actions, package-aware balances, full-priority allocator, reservations aggregate |
 | 4. Recipe Serving Scaling | Recipes and Measurements | RecipeScaler using original amounts and fixed-precision arithmetic |
-| 5. Pantry-Based Recommendations | Recommendations | RecommendationQuery, RecommendationEngine, detailed match result objects |
-| 6. Dinner Plan Management | Dinner Planning | DinnerPlan, PlannedDinner actions, policies, requirement snapshots |
-| 7. Ingredient Reservation Lifecycle | Dinner Planning and Pantry | PantryAllocator, transactions, row locks, IngredientReservation |
-| 8. Grocery List Generation | Groceries | GroceryCalculator, stable generated-item identities, contribution rows |
+| 5. Pantry-Based Recommendations | Recommendations | RecommendationQuery, configurable Q/F/P/M/I engine, detailed explanations |
+| 6. Dinner Plan Management | Dinner Planning | Rolling DinnerPlan, active/history actions, duplicate/restore, complete snapshots |
+| 7. Ingredient Reservation Lifecycle | Dinner Planning and Pantry | Priority reconciliation, transactions/locks, confirmation, IngredientReservation |
+| 8. Grocery List Generation | Groceries | GroceryCalculator, temporary overrides, increase-sensitive checks, stable identities/contributions |
 
 ## 7. Request and data flow
 
@@ -431,7 +434,9 @@ app/
 └── Providers/
 
 config/
-└── measurements.php
+├── dinner-decider.php
+├── measurements.php
+└── recommendations.php
 
 resources/views/
 ├── components/
@@ -495,7 +500,9 @@ The proposed routes/product.php is included from routes/web.php. This keeps the 
 | app/Services/Recommendations | Deterministic scoring and explanations | RecommendationEngine | Querying the authenticated user from globals | App\Services\Recommendations\RecommendationEngine |
 | app/Services/Groceries | Deterministic grouping and grocery calculation | GroceryCalculator | Persisting manual items or authorizing users | App\Services\Groceries\GroceryCalculator |
 | app/ValueObjects | Immutable concepts with equality and invariants | Quantity, CompatibilityKey | Eloquent identity, service-container dependencies, mutable state | App\ValueObjects\Quantity |
+| config/dinner-decider.php | MVP presentation conventions | Europe/Amsterdam display timezone, DD-MM-YYYY, 24-hour time, Monday week start | Per-user mutable preferences or translated content | display_timezone |
 | config/measurements.php | Environment-independent measurement policy | Calculation scale, fraction display thresholds, supported defaults | User-specific ingredients or mutable unit records | Calculation scale of 6 |
+| config/recommendations.php | One source for recommendation factors | Quantity/full/partial/missing/incompatible weights | User-specific rankings or database queries | quantity_coverage weight of 60 |
 | resources/views/pages/{feature} | Livewire 4 page components using existing SFC convention | Page state, calls to forms/actions/queries, Flux composition | Business algorithms and unscoped database access | resources/views/pages/pantry/⚡index.blade.php |
 | tests/Unit/{feature} | Fast isolated domain tests | Quantity, scaler, allocator, scoring, formatter tests | HTTP or database assertions | QuantityTest |
 | tests/Feature/{feature} | User-visible behavior through Laravel/Livewire | Validation, policy, persistence, page interactions | Direct testing of private implementation details | PlanDinnerTest |
@@ -620,10 +627,19 @@ If a public/mobile API is approved, add versioned controllers and Eloquent API R
 - **PlannedDinner** is one selected occurrence of a Recipe for a chosen serving count.
 - **Dish** is acceptable UI language but is not a separate model. Creating both Dish and Recipe would duplicate the same concept.
 - **PantryEntry** is a user-owned stock balance in one compatible representation.
-- **Staple status** lives on the user-owned Ingredient rather than being duplicated on PantryEntry, because a staple intentionally needs no exact stock entry. staple_needs_purchase is its explicit grocery override.
+- **Ingredient availability** uses two separate fields on the user-owned Ingredient: is_staple describes normal household behaviour and is_currently_available is the temporary availability override. The state is not duplicated on PantryEntry.
 - **IngredientReservation** allocates part of a PantryEntry to one planned requirement.
 - **PlannedDinnerRequirement** is an immutable-at-selection snapshot of what that dinner needs.
 - **IngredientPackage** is an architecture term introduced for the reusable package definition implied by the epic, such as one can containing 400 g.
+
+Availability truth table:
+
+| is_staple | is_currently_available | Calculation behaviour |
+| --- | --- | --- |
+| true | true | Assume covered without exact stock; do not reserve/deduct/generate. |
+| true | false | Treat as missing; generate exact shortfall or Required non-exact check. |
+| false | true | Use normal PantryEntry totals/reservations. |
+| false | false | Ignore recorded stock temporarily and treat requirements as missing. |
 
 ### 10.2 Entity relationships
 
@@ -632,7 +648,7 @@ erDiagram
     USER ||--o{ INGREDIENT : owns
     USER ||--o{ RECIPE : owns
     USER ||--o{ PANTRY_ENTRY : owns
-    USER ||--o| DINNER_PLAN : has
+    USER ||--|| DINNER_PLAN : has
 
     INGREDIENT ||--o{ INGREDIENT_ALIAS : has
     INGREDIENT ||--o{ INGREDIENT_PACKAGE : defines
@@ -661,20 +677,22 @@ erDiagram
 | Entity | Important data | Invariants and behavior |
 | --- | --- | --- |
 | User | Existing identity/auth fields | Owns all MVP aggregate roots; product data is inaccessible to other users. |
-| Ingredient | user_id, name, normalized_name, category, preferred group/unit, is_staple, staple_needs_purchase, archived_at | Name is unique per user after normalization; preferred unit must match its group; a staple is assumed available, while the purchase flag explicitly includes it as a grocery check item. |
+| Ingredient | user_id, name, normalized_name, category, preferred group/unit, is_staple, is_currently_available, archived_at | Name is unique per user after normalization; preferred unit must match its group. Defaults are non-staple/currently available. An available staple needs no exact stock; unavailable state masks stock without deleting it. |
 | IngredientAlias | ingredient_id, name, normalized_name | Alias is unique within the owning ingredient/user catalogue and resolves to exactly one Ingredient for that user. |
 | IngredientPackage | ingredient_id, package type, label, content amount/unit/normalized amount nullable | Known contents must be mass or volume compatible; unknown packages compare only by the same package definition ID. |
-| Recipe | user_id, name, description, default_servings, times, difficulty, cuisine, meal_type, image_path, source_url, archived_at | Default servings is at least one; archived recipes remain readable for planned/history references; edits do not mutate existing planned snapshots. |
-| RecipeIngredient | recipe_id, ingredient_id, quantity type, entered amount/unit, normalized amount, compatibility key, package ID, description, optional status, position | Exact rows require positive amount and compatible unit; non-exact rows require a description and have no numeric calculation amount. |
+| Recipe | user_id, name, description, default_servings, times, difficulty, cuisine, meal_type, notes, image_path, source_url, archived_at | Name/default servings/one ingredient/one step are required. Other metadata is nullable without invented defaults. Archived recipes are excluded from editing/recommendations but may be planned through the archive/history flow using snapshots. |
+| RecipeIngredient | recipe_id, ingredient_id, quantity type, entered amount/unit, normalized amount, compatibility key, package ID, description, non_exact_status, position | Exact rows require positive amount and compatible unit. Non-exact rows require a description and NonExactStatus::Required or Optional, with no numeric calculation amount. |
 | RecipeStep | recipe_id, instruction, position | Position is unique within recipe; blank steps are rejected. |
-| PantryEntry | user_id, ingredient_id, display unit, total normalized amount, compatibility key, unknown-package ID, merge key | Total is non-negative; total cannot be reduced below active reservations; compatible additions merge according to merge key. |
-| DinnerPlan | user_id | Exactly one active MVP plan per user; future multiple plans may relax this constraint. |
-| PlannedDinner | dinner_plan_id, recipe_id, servings, planned_date, status, position, cooked_at, cancelled_at | Same recipe may appear more than once; servings is positive; only Planned may transition to Cooked or Cancelled; Cooked is terminal for MVP. |
-| PlannedDinnerRequirement | planned_dinner_id, source recipe ingredient, base and scaled quantity snapshots, compatibility key, missing amount, display metadata | Snapshot survives recipe edits/archive; missing is never negative; non-exact rows have no exact reservation. |
+| PantryEntry | user_id, ingredient_id, display unit, total normalized amount, compatibility key, package ID, merge key | Total is non-negative; any reduction/removal reconciles reservations so their sum never exceeds the resulting total; compatible additions merge according to representation-aware merge key. |
+| DinnerPlan | user_id | Exactly one rolling MVP list per user; there is no week/name/current-plan selector. Planned rows form the active list and Cooked/Cancelled rows form history. |
+| PlannedDinner | dinner_plan_id, recipe_id nullable, recipe name/metadata snapshot, servings, planned_date, status, position, cooked_at, cancelled_at, restored_at | Same recipe/snapshot may appear more than once; servings is positive; Planned may become Cooked or Cancelled, Cancelled may be restored to Planned through a reallocation action, and Cooked is terminal. |
+| PlannedDinnerRequirement | planned_dinner_id, source recipe ingredient nullable, ingredient/display/base/scaled snapshots, compatibility key, missing amount, unresolved_at_cooking, unresolved reason | Snapshot survives recipe edits/archive/deletion policy changes; missing is never negative; non-exact rows have Required/Optional status and no exact reservation. |
 | IngredientReservation | requirement_id, pantry_entry_id, normalized amount | Amount is positive and compatible; one requirement/entry pair is unique; summed reservations never exceed pantry total. |
-| GroceryList | dinner_plan_id, regenerated_at | One per active plan. |
-| GroceryItem | grocery_list_id, ingredient_id nullable, source, generation_key nullable, quantity/description, category, checked_at | Generated and manual items are distinguishable; manual rows survive regeneration; stable generated identity preserves checked state. |
+| GroceryList | dinner_plan_id, regenerated_at | Exactly one for the user's rolling DinnerPlan. |
+| GroceryItem | grocery_list_id, ingredient_id nullable, source, generation_key nullable, calculated amount/description, temporary override amount/unit, is_manually_adjusted, category, checked_at, previous amount, quantity_increased_at | Generated and manual items are distinguishable. Generated overrides clear on recalculation; an increased calculated quantity unchecks the row and records enough change state to explain why. |
 | GroceryItemContribution | grocery_item_id, requirement_id, normalized contribution nullable | Explains which planned dinner created each grocery quantity/check item. |
+
+The rolling DinnerPlan is a conceptual singleton and has a unique user_id. EnsureDinnerPlan creates it idempotently during first product onboarding/access (and may also be called after registration) so existing starter users are supported without a schema migration that mixes data backfill into DDL.
 
 ### 10.4 Quantity value concepts
 
@@ -694,7 +712,7 @@ The value object never silently converts:
 
 “Salt to taste” is not represented as Quantity with zero. RecipeIngredient and PlannedDinnerRequirement use QuantityType::NonExact plus a required description. This keeps non-exact rows out of recommendation scoring and exact reservations while allowing explanatory display and grocery check items.
 
-The optional non-exact status from the epic is carried into the planned snapshot and grocery explanation. Its allowed values and behaviour must be product-defined before implementation; the architecture does not invent an enum prematurely.
+App\Enums\NonExactStatus has exactly Required and Optional. Required non-exact ingredients are covered by an available staple or positive pantry presence while the ingredient is currently available; otherwise they generate a grocery check and may appear in unresolved-cooking confirmation. Optional ingredients do not count as missing, affect scoring, or generate groceries; the UI may show them separately and users may add them manually.
 
 #### CompatibilityKey
 
@@ -702,15 +720,16 @@ CompatibilityKey identifies a calculation bucket:
 
 - mass
 - volume
-- count:piece
-- count:clove
-- count:slice
-- count:leaf
-- count:stalk
-- count:sprig
+- count:{ingredient_id}:piece
+- count:{ingredient_id}:clove
+- count:{ingredient_id}:bulb
+- count:{ingredient_id}:slice
+- count:{ingredient_id}:leaf
+- count:{ingredient_id}:stalk
+- count:{ingredient_id}:sprig
 - package:{ingredient_package_id} for a package without known metric contents
 
-Known packages normalize to their content compatibility key. For example, a 400 g can of tomatoes participates in mass comparisons. The original package remains available for display.
+Every comparison also requires the same Ingredient. Count compatibility explicitly includes ingredient plus semantic unit, so tomato pieces cannot match another ingredient's pieces and tomato slices cannot match tomato pieces. Known packages normalize to their content compatibility key for calculation while retaining package identity for display. For example, a 400 g can of tomatoes participates in tomato-mass comparisons but can still render as “1 can — 400 g”.
 
 #### Unit definitions
 
@@ -720,10 +739,14 @@ Supported initial units:
 
 - Mass: mg, g, kg; base g.
 - Volume: ml, l, tsp, tbsp; base ml; 5 ml per tsp and 15 ml per tbsp.
-- Semantic count: piece, clove, slice, leaf, stalk, sprig; each is its own compatibility group.
+- Semantic count: piece, clove, bulb, slice, leaf, stalk, sprig; each is ingredient-specific and not convertible to another count unit or mass.
 - Package type labels: can, jar, pack, bag, bottle.
 
 Adding a genuinely user-configurable unit catalogue is a future option. Do not create database-managed conversion formulas for the MVP.
+
+#### Display policy
+
+QuantityFormatter retains full calculation precision but normally renders at most two decimal places and removes trailing zeroes. Common fractions may be used for count/package display. Recipe and pantry views show meaningful known-package context plus normalized metric content, for example “2 cans × 400 g — 800 g total”. Generated groceries lead with the exact metric requirement and may add source context such as “equivalent to 1.5 × 400 g cans”; they never round up to supermarket packages.
 
 ## 11. Database and persistence strategy
 
@@ -758,7 +781,7 @@ An exact RecipeIngredient stores:
 
 PlannedDinnerRequirement snapshots the source display metadata plus its base and scaled normalized values. IngredientReservation stores the exact normalized allocated amount and compatibility metadata; its related requirement, pantry entry, and formatter provide readable display.
 
-PantryEntry is an aggregate balance, so it stores total_normalized_amount, compatibility_key, merge_key, and a compatible display_unit. It does not claim to preserve every stock addition's original unit: after adding 1 kg and 500 g there is one 1,500 g balance, formatted in the ingredient's preferred/display unit. A known-content package merges into its metric compatibility balance; only an unknown-content package retains IngredientPackage identity in its merge key. Preserving every addition would require an inventory ledger/lot model, which expiry/audit requirements do not justify for the MVP.
+PantryEntry is an aggregate balance, so it stores total_normalized_amount, compatibility_key, merge_key, and a compatible display_unit. Direct compatible quantities merge into a metric/count balance: after adding 1 kg and 500 g there is one 1,500 g balance. Package entries use IngredientPackage in the merge key, including known packages, so two 400 g cans can remain “2 cans × 400 g” while allocation aggregates their 800 g with other compatible tomato-mass entries. Different known package definitions remain separate display rows but jointly satisfy metric requirements. Unknown packages match only the same package definition. Preserving individual purchase lots would require a ledger/lot model, which expiry/audit requirements do not justify for the MVP.
 
 The server derives all normalized and merge fields; clients never submit them as trusted values. The intentional duplication on recipe/snapshot rows preserves understandable editing, while normalized values make comparisons and indexes practical.
 
@@ -768,7 +791,7 @@ This is a design outline, not migration code.
 
 | Table | Key constraints and indexes |
 | --- | --- |
-| ingredients | FK user_id cascade; unique user_id + normalized_name; index user_id + archived_at; preferred unit/group validated by action |
+| ingredients | FK user_id cascade; unique user_id + normalized_name; index user_id + archived_at; is_staple default false/is_currently_available default true mirrored in model attributes; boolean indexes only if measured |
 | ingredient_aliases | FK ingredient_id cascade; unique ingredient_id + normalized_name |
 | ingredient_packages | FK ingredient_id cascade; index ingredient_id + package_type; positive content check when content exists |
 | recipes | FK user_id cascade; index user_id + archived_at + name; positive default_servings check |
@@ -778,11 +801,11 @@ This is a design outline, not migration code.
 | category_recipe and recipe_tag | Composite primary/unique keys and cascading parent FKs |
 | pantry_entries | FK user_id cascade; FK ingredient_id restrict; unique user_id + ingredient_id + merge_key; index user_id + compatibility_key |
 | dinner_plans | FK user_id cascade; unique user_id for MVP |
-| planned_dinners | FK dinner_plan_id cascade; FK recipe_id restrict; index plan_id + status + position; index planned_date |
-| planned_dinner_requirements | FK planned_dinner_id cascade; nullable source recipe ingredient FK null on delete; index ingredient_id + compatibility_key |
+| planned_dinners | FK dinner_plan_id cascade; nullable FK recipe_id null on permanent recipe deletion; snapshot columns required; indexes plan_id + status + planned_date + position and plan_id + status + created_at |
+| planned_dinner_requirements | FK planned_dinner_id cascade; nullable source recipe ingredient FK null on delete; snapshot/non-exact/unresolved-at-cooking columns; index ingredient_id + compatibility_key |
 | ingredient_reservations | FK requirement_id cascade; FK pantry_entry_id restrict; unique requirement_id + pantry_entry_id; index pantry_entry_id |
 | grocery_lists | FK dinner_plan_id cascade; unique dinner_plan_id |
-| grocery_items | FK grocery_list_id cascade; nullable ingredient FK restrict; unique list_id + source + generation_key for generated rows; index category + checked_at |
+| grocery_items | FK grocery_list_id cascade; nullable ingredient FK restrict; unique list_id + source + generation_key for generated rows; calculated/override/change columns; indexes list_id + checked_at and category |
 | grocery_item_contributions | FK grocery_item_id cascade; FK requirement_id cascade; unique item_id + requirement_id |
 
 MySQL nullable uniqueness must be considered when implementing manual grocery items. Generated rows should always have a non-null generation_key; manual rows may have null and are not deduplicated automatically.
@@ -796,29 +819,31 @@ Future shared households should add a Household and membership model, create one
 ### 11.6 Archive and delete behavior
 
 - Recipes and Ingredients use explicit archived_at business state rather than destructive deletion when referenced.
-- Recipe deletion from the UI archives if it has planning/history references.
+- Archived recipes are excluded from ordinary editing/recommendations. Archive/history actions may snapshot an archived recipe into a new dinner, duplicate a historical occurrence, or restore the recipe to the catalogue.
+- PlannedDinner stores recipe metadata and requirement snapshots so history remains accurate if the source recipe is archived or later permanently removed.
+- Permanent recipe deletion is not a normal MVP UI operation. Any future administrative deletion removes its image through Storage and nulls snapshot source references without destroying dinner history.
 - PlannedDinner cancellation retains the occurrence and releases reservations.
-- PantryEntry deletion is rejected while active reservations exist.
-- User deletion must cascade all user-owned product data in a tested transaction.
+- Direct PantryEntry deletion is rejected while reservations exist; RemovePantryEntry requires confirmation, releases/reconciles affected reservations, then deletes safely.
+- Self-service account deletion, export, and configurable retention are postponed. A future explicit deletion/anonymisation action must handle files and owned rows transactionally; the schema must not make export or anonymisation impossible.
 - Deployed migrations are immutable; changes use new migrations.
 
 ### 11.7 Transactions and locking
 
 Use DB::transaction with a small deadlock retry count for reservation-sensitive actions. Use pessimistic lockForUpdate for:
 
-- the PlannedDinner being changed or cooked,
+- the PlannedDinner being changed/cooked and all affected active Planned rows,
 - affected PantryEntry rows,
 - existing reservations being released or consumed,
-- the active DinnerPlan/GroceryList when regeneration writes generated items.
+- the rolling DinnerPlan/GroceryList when regeneration writes generated items.
 
 Lock rows in ascending primary-key order to reduce deadlocks. Never call an external HTTP service or send mail while holding the transaction.
 
 The following operations are transaction boundaries:
 
-- Add or reduce pantry stock when reservations/shortfalls may change.
-- Plan a dinner.
-- Change planned servings.
-- Cancel/remove a planned dinner.
+- Add, reduce, or remove pantry stock and change ingredient availability/staple state.
+- Plan from catalogue/archive/history or duplicate a dinner.
+- Change planned servings, date, or rolling-list position.
+- Cancel, restore, or remove a planned dinner.
 - Mark a dinner cooked.
 - Regenerate generated grocery items when invoked by those operations.
 
@@ -845,13 +870,16 @@ Representative rules include:
 
 | Input | Boundary rules |
 | --- | --- |
-| Ingredient | Required name, normalized per-user uniqueness, optional archive state |
+| Ingredient | Required name, normalized per-user uniqueness, compatible preferred unit, is_staple, and is_currently_available booleans |
 | Exact quantity | Positive parseable decimal/fraction input, normalized scale no greater than six, supported unit, ingredient/unit compatibility |
-| Non-exact quantity | Explicit non-exact type, required description, optional product-defined status; amount and unit must be absent |
+| Non-exact quantity | Explicit non-exact type, required description, Required/Optional status; amount and unit must be absent |
 | Package quantity | Positive package count plus an IngredientPackage belonging to the same ingredient |
-| Recipe | Name, positive original servings, at least one requirement and one instruction, unique positive positions |
-| Pantry adjustment | Positive amount and compatible unit/package; a reduction may not cross reserved stock |
-| Planned dinner | Owned active recipe, positive servings, a plan date/status transition allowed by the action |
+| Recipe | Required name, positive default servings, at least one ingredient and one instruction; optional metadata remains nullable; unique positive positions |
+| Pantry adjustment | Non-negative resulting total and compatible unit/package; reductions/removals require locked reservation reconciliation and explicit removal confirmation where applicable |
+| Planned dinner | Owned active recipe, authorized archived recipe/archive snapshot, or stored historical snapshot; positive servings, optional date, allowed state/action transition |
+| Generated grocery edit | Positive amount and compatible unit for the generated ingredient/key; writes only temporary override fields |
+
+Recipe description, preparation/cooking time, cuisine, meal type, difficulty, categories, tags, notes, image, and source URL are optional. Missing metadata stays null/unknown: it does not block recommendations and is not assigned a guessed default, but the recipe cannot match a filter for a value it lacks. A missing image uses a standard presentation placeholder rather than a fake stored path.
 
 The client may provide immediate feedback, but server-side validation remains authoritative.
 
@@ -860,22 +888,23 @@ The client may provide immediate feedback, but server-side validation remains au
 Value objects, model methods, and actions re-check invariants that matter to stored state. Examples are:
 
 - Quantity never contains a float, zero/negative amount, unsupported scale, or incompatible measurement group.
-- PlannedDinner follows Planned to Cooked or Cancelled and cannot transition out of a terminal state.
+- PlannedDinner follows Planned to Cooked or Cancelled; Cancelled may return to Planned only through RestoreCancelledDinner, while Cooked remains terminal.
 - A reservation never exceeds the entry's available quantity.
 - Cooking consumes each reservation at most once.
-- An archived recipe cannot be newly selected.
+- An archived recipe is not editable/recommended or selectable from the ordinary active catalogue, but archive/history actions may snapshot it into a new occurrence without depending on later live changes.
 - A recipe requirement and an ingredient package must reference the same ingredient.
 
 Do not duplicate all UI rules in every layer. Re-check only rules required for correctness or security, and express calculations through shared value objects/services.
 
 ### 12.3 Exception and user-error policy
 
-Expected business conflicts use small, named exceptions in App\Exceptions, such as InsufficientAvailablePantry or InvalidDinnerTransition. The calling Livewire component converts these into a form or banner error. Authorization failures remain AuthorizationException responses, missing owned records remain 404 where appropriate, and unexpected failures are allowed to reach Laravel's exception handler and logs.
+Expected business conflicts use small, named exceptions in App\Exceptions, such as InvalidDinnerTransition, PantryRemovalRequiresConfirmation, or UnresolvedRequirementsRequireConfirmation. The calling Livewire component converts these into a form, modal, or banner result. Authorization failures remain AuthorizationException responses, missing owned records remain 404 where appropriate, and unexpected failures are allowed to reach Laravel's exception handler and logs.
 
 | Failure | User response | Log level |
 | --- | --- | --- |
 | Invalid input | Field-level 422-style validation feedback | None |
 | Stale pantry availability during selection | Clear retry/change-servings message | Notice or structured info |
+| Unresolved cook without current confirmation | Structured confirmation modal with missing/incompatible/unchecked summary | None |
 | Forbidden owned resource | 403, or 404 when concealing existence | Security context at warning only if suspicious/repeated |
 | Deadlock after configured retries | Generic retry message | Error with operation IDs |
 | Integration/queue failure | Non-blocking status and retry where possible | Error |
@@ -955,22 +984,28 @@ GetPantryAwareRecommendations loads active recipes with ordered requirements, in
 For each scaled requirement:
 
 1. Scale from the immutable recipe amount and original servings, never from a previously rounded display amount.
-2. Treat a user-designated staple as covered for scoring, with no reservation or consumption. Its staple_needs_purchase flag affects groceries, not recommendation availability.
+2. Treat an ingredient as unlimited staple coverage only when is_staple and is_currently_available are both true. An unavailable staple is missing; a non-staple marked unavailable ignores recorded pantry stock until re-enabled.
 3. For an exact comparable requirement, calculate coverage ratio as min(available / required, 1).
-4. For a non-exact requirement, report its description and whether it is a staple/present as explanatory information only. Exclude it from every scoring term and exact reservation.
+4. For a non-exact requirement, report Required/Optional status and coverage as explanatory information only. Exclude it from every scoring term and exact reservation.
 5. For a known-content package, convert package count to its declared metric content.
 6. For an unknown-content package, compare only the identical IngredientPackage definition. It is incompatible with grams, millilitres, or a different package definition.
 7. Record missing, partially covered, and incompatible requirements for explanation.
 
 Use one documented score for MVP:
 
-score = 60 × mean quantity coverage + 25 × requirement presence coverage + 15 × fully covered requirement coverage
+ranking score = clamp(60Q + 20F − 10P − 10M − 10I, 0, 80)
 
-Mean quantity coverage is the mean of each exact requirement's capped available/required ratio. Presence coverage is the proportion with any compatible quantity available. Fully covered coverage is the proportion whose available quantity meets the requirement. A staple contributes one to all three terms.
+Where:
 
-All three terms are represented from zero to one before weighting and calculated over exact measurable requirements only. If a recipe has no exact requirements, its numeric score is zero and the explanation says it cannot be quantity-matched. Rank by descending score, then fewer exact missing requirements, fewer exact incompatible requirements, recipe name, and recipe ID. Round only the displayed score.
+- Q is mean exact quantity coverage;
+- F is the proportion of exact ingredient lines fully available;
+- P is the proportion partially available;
+- M is the proportion completely missing;
+- I is the proportion with incompatible measurements.
 
-The exact weights are a product assumption, not a permanent domain truth. Keep them in config/recommendations.php and cover them with golden examples. Reconsider when real usage data or a user-controlled preference model exists. Do not add AI, embeddings, a rules engine, or persisted recommendation rows for the MVP.
+All factors are zero-to-one proportions over exact measurable requirements. The categories F/P/M/I are mutually exclusive; incompatible lines contribute zero quantity coverage. An available staple counts as fully covered. Non-exact lines are excluded. The ranking value is deliberately a score, not a pantry-coverage percentage; display quantity coverage separately. If a recipe has no exact requirements, its score is zero and the explanation says it cannot be quantity-matched. Rank by descending score, then fewer incompatible/missing/partial exact lines, recipe name, and recipe ID. Round only the displayed score.
+
+The weights, including the initial 10-point incompatibility penalty, live once in config/recommendations.php and are covered by golden examples. They are an accepted MVP starting point but remain adjustable after user testing. Do not duplicate them in controllers/queries or add AI, embeddings, a rules engine, or persisted recommendation rows.
 
 Each recommendation view model includes enough explanation to answer “why?”:
 
@@ -979,34 +1014,54 @@ Each recommendation view model includes enough explanation to answer “why?”:
 - fully available ingredients;
 - partial and missing amounts;
 - incompatible unit/package cases;
-- staples assumed available and any purchase-needed override;
-- non-exact check items, clearly excluded from scoring.
+- available and temporarily unavailable staples;
+- Required/Optional non-exact items, clearly excluded from scoring.
 
 ### 15.2 Planning and reservation allocation
 
-PlanDinner runs a database transaction:
+There is one rolling DinnerPlan for each user. Its Planned occurrences are the active ordered list; Cooked and Cancelled occurrences remain queryable as history, so no plan selector, plan name, or week boundary exists.
 
-1. Authorize the recipe and dinner plan; reject archived recipes.
-2. Lock the current plan and relevant pantry entries in ascending ID order.
-3. create the PlannedDinner in Planned state.
-4. Snapshot scaled requirements into PlannedDinnerRequirement.
-5. Allocate each exact requirement across compatible PantryEntry rows deterministically, creating IngredientReservation rows only up to available quantities.
-6. Store the remaining shortfall on the requirement. Non-exact requirements have presence/missing status but no numeric reservation.
-7. Regenerate affected generated grocery items and their contribution rows.
+PlanDinner runs a database transaction for an active catalogue recipe:
 
-Allocation order is stable: exact native compatibility first, then convertible known-content packages, then ascending pantry-entry ID. The initial schema has no expiry date, so “first expiring” is deliberately postponed. If expiry tracking is added, earliest expiry becomes the first allocation key.
+1. Authorize the recipe and rolling plan; ordinary catalogue planning requires an active recipe.
+2. Lock the rolling plan, affected Planned rows, relevant pantry entries, and reservations in stable order.
+3. Create the PlannedDinner in Planned state and snapshot recipe identity/metadata.
+4. Snapshot scaled ingredients into PlannedDinnerRequirement, including Required/Optional non-exact status.
+5. Reconcile every affected active requirement in dinner-priority order.
+6. Store each exact shortfall and required non-exact coverage state.
+7. Regenerate generated grocery items/contributions and return changed-item notices.
 
-Recipe edits do not change an existing planned dinner because its requirements are snapshots. Changing a planned dinner's servings recalculates from its snapshot base/original servings, releases the old reservations, and reallocates in one transaction. This is slightly more storage than referring to the live recipe, but it preserves what the user actually planned and prevents silent grocery changes.
+Dinner priority is:
 
-Adding pantry stock or changing staple state invokes ReconcilePlanReservations for requirements of the affected ingredient in the current plan. It preserves existing reservations, then allocates newly available quantity by planned date, PlannedDinner ID, and requirement ID; finally it updates shortfalls and regenerates groceries in the same transaction. Reducing stock never steals a reservation and is rejected below the reserved total. This deterministic first-planned-first-served rule is an MVP assumption that can later become an explicit user priority.
+1. dated dinners before undated dinners;
+2. planned_date ascending;
+3. rolling-list position ascending;
+4. created_at ascending;
+5. primary key ascending as a final deterministic tie-break.
 
-### 15.3 Cooking and cancellation
+For each prioritized requirement, PantryAllocator uses exact native compatibility first, then convertible known-content packages, then PantryEntry ID. Manual allocation is postponed; users influence priority through dates and list reordering.
 
-MarkDinnerCooked locks the PlannedDinner, its reservation rows, and affected pantry entries. It verifies Planned state, subtracts exactly the reserved amount from each pantry total, deletes or marks the reservations consumed according to the chosen audit implementation, sets Cooked with cooked_at, and regenerates the plan's generated grocery items. It never performs a second “best effort” pantry calculation at cook time.
+Every operation that can change supply, demand, or priority—stock add/reduce/removal, ingredient availability/staple state, dinner add/restore/remove/cancel/cook, servings/date/position changes—runs ReconcilePlanReservations for affected ingredients. It releases affected active reservations and recalculates them from the beginning in priority order; it does not preserve allocations that now belong to an earlier dinner. Reductions may lower stock below the old reserved amount because reconciliation first resolves those reservations, but the resulting total and available balances may never be negative. Removing a pantry entry with reservations requires explicit confirmation and the same reconciliation.
 
-CancelDinner locks the same aggregate, releases reservations without changing pantry totals, sets Cancelled with cancelled_at, and regenerates the grocery list. Terminal actions are idempotent for duplicate browser submissions: repeating the same terminal command returns the existing terminal result; attempting the opposite terminal transition fails.
+Recipe edits do not change an existing planned dinner because recipe metadata and requirements are snapshots. Changing servings recalculates from the snapshot's original amounts, never a rounded scaled result.
 
-### 15.4 End-to-end workflow
+### 15.3 Historical snapshots, duplication, and restoration
+
+Archived recipes are excluded from ordinary recommendations/editing. PlanArchivedRecipe may snapshot an owned archived recipe from the archive screen, and PlanDinnerFromHistory may copy a Cooked/Cancelled snapshot without relying on the live recipe. Either flow may offer a separate RestoreRecipeToCatalogue action.
+
+DuplicatePlannedDinner creates an independent Planned occurrence with the same recipe snapshot, serving count, ingredient configuration, and optional date when requested. It never copies reservations, shortfalls, checked groceries, or terminal status; requirements are recalculated and reservations are allocated from current stock.
+
+RestoreCancelledDinner changes only a Cancelled occurrence back to Planned, records restored_at, recalculates requirements from its snapshot, and performs full priority reconciliation. Old reservations are never restored blindly. Repeating a restore on an already Planned occurrence is idempotent; Cooked occurrences cannot be restored.
+
+### 15.4 Cooking, cancellation, and removal
+
+MarkDinnerCooked locks the PlannedDinner, affected pantry/reservation rows, and grocery contributions, then refreshes unresolved state. Unresolved means an exact shortfall whose generated grocery contribution is absent/unchecked, an incompatible exact requirement, or an unavailable Required non-exact item whose check item is absent/unchecked. If unresolved state exists and confirmation was not supplied, the action throws UnresolvedRequirementsRequireConfirmation with a structured summary for the Livewire confirmation modal.
+
+After explicit confirmation—or immediately when fully covered—the action subtracts exactly the reserved amounts from pantry totals, removes/consumes those reservations, stores unresolved_at_cooking details on requirement snapshots, sets Cooked with cooked_at, reallocates remaining stock to later Planned dinners, and regenerates groceries. Missing quantities are never deducted. The confirmation is revalidated inside the locked transaction so a stale modal cannot approve different hidden state.
+
+CancelDinner releases reservations without changing pantry totals, sets Cancelled, reallocates later dinners, and regenerates groceries; the occurrence remains in history and may be restored. RemovePlannedDinner releases/reallocates in the same way but permanently removes an unprocessed occurrence from the rolling list. Repeating Cook/Cancel/Remove safely returns the existing result where possible, and a Cooked dinner can never deduct twice.
+
+### 15.5 End-to-end workflow
 
 ~~~mermaid
 flowchart TD
@@ -1018,59 +1073,72 @@ flowchart TD
     E -- Yes --> F[PlanDinner transaction]
     F --> G[Lock plan and compatible pantry entries]
     G --> H[Snapshot planned requirements]
-    H --> I[Allocate partial or full reservations]
+    H --> I[Reallocate active dinners in date and list priority]
     I --> J[Record remaining shortfalls]
     J --> K[Regenerate generated grocery items]
     K --> L[Commit PlannedDinner]
     L --> M{Later action}
-    M -- Change servings --> N[Release and reallocate in one transaction]
+    M -- Change servings, date, order, or pantry --> N[Release affected reservations and fully reallocate]
     N --> K
     M -- Cancel --> O[Release reservations]
-    O --> P[Set Cancelled and regenerate groceries]
-    M -- Cook --> Q[Lock dinner, reservations, and pantry]
-    Q --> R[Deduct each reserved amount exactly once]
-    R --> S[Set Cooked and regenerate groceries]
+    O --> P[Set Cancelled, reallocate, and regenerate]
+    P --> T{Restore later?}
+    T -- Yes --> N
+    M -- Cook --> Q[Lock and summarize unresolved requirements]
+    Q --> R{Unresolved and confirmed?}
+    R -- No confirmation --> U[Show confirmation summary]
+    U --> Q
+    R -- Covered or confirmed --> V[Deduct each reservation exactly once]
+    V --> S[Store unresolved history, set Cooked, reallocate, regenerate]
 ~~~
 
-### 15.5 Concurrency guarantees
+### 15.6 Concurrency guarantees
 
 - Available equals total minus active reservations, calculated from locked rows inside mutation transactions.
-- Reducing/removing pantry stock is rejected when it would take total below reserved.
-- Two simultaneous PlanDinner requests serialize on affected pantry entries; the second sees the first reservation.
+- Reducing/removing stock first releases affected reservations and reallocates against the new non-negative total; availability never becomes negative.
+- Two simultaneous planning/reordering/stock requests serialize on the rolling plan and affected pantry rows; the second recomputes the authoritative priority order.
 - A unique constraint prevents duplicate reservation allocation for one planned requirement and pantry entry.
-- Dinner terminal state and timestamps, plus transaction locks, prevent double consumption.
+- Cooked state and timestamps, plus transaction locks, prevent double consumption; restoration is allowed only from Cancelled.
 - The recommendation screen may become stale, but the planning action never promises stale quantities.
 
 ## 16. Grocery-list generation workflow
 
-The MVP has one current GroceryList per DinnerPlan. It contains generated items and user-created manual items. Generated items are derived from planned requirement shortfalls; manual items are never rewritten by generation.
+The rolling DinnerPlan has one GroceryList containing generated items and user-created manual items. Generated items are derived from active Planned requirement shortfalls; manual items are never rewritten by generation.
 
 ### 16.1 Generation algorithm
 
 RegenerateGroceryList executes within the calling plan transaction:
 
 1. Load active PlannedDinnerRequirement shortfalls for Planned dinners.
-2. Exclude numeric requirements with no shortfall. Exclude staples unless staple_needs_purchase is set; when it is set, produce one non-quantified “replenish/check” item rather than inventing tracked stock.
+2. Exclude exact requirements with no shortfall. An available staple is excluded; a temporarily unavailable staple contributes its exact shortfall or a Required non-exact check item.
 3. Group exact shortfalls by ingredient and compatibility key. Convertible mass/volume/count amounts use normalized units; unknown packages group only by IngredientPackage ID.
-4. Group non-exact missing requirements by ingredient and normalized note, displaying “as needed” rather than inventing an amount.
+4. Group uncovered Required non-exact requirements by ingredient and normalized description, displaying a check item without inventing an amount. Exclude Optional rows.
 5. Sum with BCMath and format through QuantityFormatter.
-6. Upsert each generated GroceryItem by a stable generation_key.
+6. Upsert each generated GroceryItem by a stable generation_key, replacing any temporary user override with the new calculated result.
 7. Replace its GroceryItemContribution rows with the exact planned requirements and amounts that produced it.
 8. Remove generated items whose keys no longer occur. Leave manual items untouched.
 
-A generation key is derived from versioned, canonical data such as ingredient ID, compatibility group, normalized unit or package ID, and non-exact note. It is not based on display text. Preserve checked state when the same generation key remains after regeneration; a materially different key is a new unchecked item.
+A generation key is derived from versioned, canonical data such as ingredient ID, compatibility group, normalized unit or package ID, and Required non-exact description. It is not based on display text. A materially different key is a new unchecked item.
 
-The user can therefore see that “750 g potatoes” consists of, for example, 300 g for one dinner and 450 g for another. Contribution rows are explanatory trace data, not a second source of quantity truth. MarkStapleForPurchase provides the explicit staple override required by the epics and is cleared deliberately by the user rather than by regeneration.
+The user can therefore see that “750 g potatoes” consists of, for example, 300 g for one dinner and 450 g for another. Contribution rows are explanatory trace data, not a second source of quantity truth. SetIngredientAvailability toggles whether a staple is assumed covered and triggers reservation/grocery reconciliation without destroying pantry balances.
 
 ### 16.2 Purchase-unit behaviour
 
-Generated quantities express the recipe shortfall in a compatible metric/count/package unit. The MVP does not optimize how many retail packs to buy, infer package sizes, compare prices, or round to supermarket quantities. Unknown packages remain counts of the exact package definition. Known packages may be displayed either as normalized metric quantity or a package count only when conversion is exact and unambiguous.
+Generated quantities express the recipe shortfall in a compatible metric/count/package unit. The MVP does not optimize how many retail packs to buy, compare prices, or round to supermarket quantities. Unknown packages remain counts of the exact package definition. For known packages, groceries primarily show the exact normalized metric need and may add equivalent source-package context; they never round 1.5 packs to 2.
 
-Manual GroceryItem rows are fully editable. For the MVP, generated ingredient/quantity fields remain calculator-owned so regeneration cannot silently preserve a false shortfall; users may edit their category/check state or add a separate manual item. If product requires persistent generated-quantity overrides, add explicit override fields while retaining calculated_amount and contributions—do not overwrite the calculated source of truth.
+Manual GroceryItem rows are fully editable and unaffected by recalculation. EditGeneratedGroceryQuantity writes a temporary override amount/unit and marks the generated row manually adjusted while leaving calculated_amount and contribution rows unchanged. The override controls display until the next relevant recalculation, at which point regeneration clears it, replaces the display with the newly calculated amount, and includes the reset item in GroceryRegenerationResult so the UI may announce that the generated list was refreshed. Generated and manual source states remain visibly distinct.
 
 ### 16.3 Idempotency and updates
 
-Regeneration is idempotent: the same plan state produces the same generated keys, amounts, and contributions. It runs after planning, changing servings, cancelling, cooking, and relevant pantry adjustments. A checked item remains checked across a same-key amount change, which favours preserving the user's shopping progress; the UI should visibly flag the changed amount. Whether an increased checked amount should auto-uncheck is an open product question recorded in section 24.
+Regeneration is idempotent: the same plan state produces the same generated keys, calculated amounts, and contributions. It runs after dinner add/duplicate/restore/remove/cancel/cook, servings/date/order changes, reservation changes, ingredient availability changes, and pantry adjustments.
+
+For a same-key generated item, compare the old and new calculated amounts before clearing any override:
+
+- equal or lower requirement: preserve checked_at;
+- increased requirement: clear checked_at, store previous_calculated_amount and quantity_increased_at, and show “Quantity changed from … to …”;
+- compatibility/fundamental key change: replace it with a new unchecked item.
+
+Checked items remain in the active list until ClearCompletedGroceries. Removing a manual item deletes it. Generated items disappear when no longer required. No separate shopping-history model, completed shopping session, or visible regeneration history is created for the MVP; ordinary timestamps/change metadata are enough for debugging and the active UI.
 
 If regeneration later becomes expensive, preserve the same pure GroceryCalculator and stable-key contract while moving only projection refresh to a queued, version-checked job. That is a future scaling option, not an MVP requirement.
 
@@ -1082,13 +1150,13 @@ The test suite uses PHPUnit 12 through Laravel's test runner. At the time of rev
 
 | Test type | Purpose | Project examples |
 | --- | --- | --- |
-| Unit | Pure rules, no Laravel container or database | Quantity arithmetic; QuantityInputParser; UnitConverter matrix; RecipeScaler; recommendation score/tie-breaks; GroceryCalculator grouping |
-| Application/feature | Actions, validation, policies, Eloquent relationships, and transactions | PlanDinner partial reservation; reject stock below reserved; cook exactly once; archive recipe; grocery idempotency |
-| Livewire feature | Page behaviour, authorization, validation, and rendered state | Create recipe form; pantry adjustment errors; recommendation explanations; change servings; check/manual grocery items |
-| MySQL integration | Behaviour SQLite cannot prove | DECIMAL round trips; unique constraints; lock ordering; two competing reservations; generated-key indexes |
+| Unit | Pure rules, no Laravel container or database | Quantity/InputParser; ingredient-specific conversion matrix; configurable recommendation fixtures; priority allocator; grocery grouping/check-state transitions |
+| Application/feature | Actions, validation, policies, Eloquent relationships, and transactions | Plan/duplicate/restore archived snapshot; full priority reconciliation; unresolved cook confirmation; transient grocery override; cook exactly once |
+| Livewire feature | Page behaviour, authorization, validation, and rendered state | Required recipe fields; history/restore UI; unresolved summary modal; quantity-increased notice; English/Dutch-format presentation |
+| MySQL integration | Behaviour SQLite cannot prove | DECIMAL round trips; unique constraints; stable lock order; competing reorder/stock/plan requests; generated-key indexes |
 | Browser/end-to-end, selective | A few high-value JavaScript/browser interactions | Complete first recipe-to-cooked-dinner journey; passkey/2FA only where browser APIs require it |
 
-Pure services should have exhaustive data providers around boundaries. Example conversion cases include decimal comma, very small/large allowed values, g↔kg, ml↔l, tsp/tbsp, compatible and incompatible count units, known packages, unknown packages, non-exact amounts, and multiple rounds of scaling without drift.
+Pure services should have exhaustive data providers around boundaries. Example cases include decimal comma, small/large values, g↔kg, ml↔l, tsp/tbsp, same-ingredient/same-count compatibility, cross-ingredient/count incompatibility, known-package dual display, unknown packages, Required/Optional non-exact amounts, display rounding/fractions, and scaling without drift.
 
 New database tests should use LazilyRefreshDatabase as required by AGENTS.md. Existing starter tests use RefreshDatabase; that difference is acceptable until those files are touched, then migrate them in small verified batches. Factories define valid defaults and named states such as archived, nonExact, staple, planned, cooked, and cancelled.
 
@@ -1097,13 +1165,13 @@ New database tests should use LazilyRefreshDatabase as required by AGENTS.md. Ex
 | Epic | Minimum architectural acceptance tests |
 | --- | --- |
 | 1. Ingredients and measurement | Exact/non-exact creation, compatibility matrix, package definitions, decimal precision |
-| 2. Recipe catalogue | Ordered requirements/instructions, serving metadata, edit/archive ownership |
-| 3. Pantry | Merge key, add/reduce stock, total/reserved/available, staple behaviour |
+| 2. Recipe catalogue | Minimum required fields, nullable metadata/unknown filters, image placeholder, archive/history-snapshot planning |
+| 3. Pantry | Merge/package context, add/reduce/removal reconciliation, total/reserved/available, two-field staple availability |
 | 4. Serving scaling | Scale from original quantities, fraction/decimal input, no cumulative rounding |
-| 5. Pantry recommendations | Deterministic scores, tie-breaks, explanations, partial/incompatible coverage |
-| 6. Dinner plan | Add/change/cancel owned recipes with requirement snapshots |
-| 7. Reservation lifecycle | Partial allocation, concurrent selection, release, exactly-once cooking |
-| 8. Grocery list | Aggregation, contribution trace, manual preservation, checked-state/idempotent regeneration |
+| 5. Pantry recommendations | Configured Q/F/P/M/I weights, tie-breaks, unavailable staples, non-exact exclusion, explanations |
+| 6. Dinner plan | Rolling order/date priority, duplicate/history planning, cancel/restore, Cooked terminal snapshots |
+| 7. Reservation lifecycle | Full priority reallocation, partial/concurrent selection, unresolved confirmation/history, exactly-once cooking |
+| 8. Grocery list | Aggregation/package context, transient generated edits, increase-unchecks/decrease-preserves, manual preservation, clearing/no history |
 
 ### 17.3 Test rules
 
@@ -1148,6 +1216,7 @@ The proposed seams allow these additions without imposing them now:
 | Shared households | Explicit owner policies and user foreign keys can migrate to Household |
 | External recipe import | Import job maps external data into the same CreateRecipe action/value rules |
 | API/mobile client | Actions and policies remain; add versioned controllers/requests/resources |
+| Internationalisation | English strings are presentation-only; central formatters/config isolate Dutch-style dates/decimals for later locale preferences |
 | Nutrition/allergens | Ingredient metadata plus calculated recipe projection |
 | Expiry-aware pantry | Add pantry lot/expiry model and change allocator ordering |
 | Retail pack optimization | Add purchasing/package optimization after GroceryCalculator shortfalls |
@@ -1186,7 +1255,7 @@ Database transactions may be instrumented with duration and deadlock retry count
 - Run migrations as a single release step before new containers accept traffic. Never run destructive schema changes and application cutovers without a compatible transition.
 - Back up MySQL and test restoration. A backup is not proven until restore verification succeeds.
 - Configure failed-job retention and alerts before enabling queued features.
-- Use UTC for stored timestamps and convert at the presentation boundary; the application locale/date display remains a product decision.
+- Keep stored timestamps in UTC and present MVP dates/times with the English interface's Netherlands-friendly policy: Europe/Amsterdam time, DD-MM-YYYY dates, 24-hour time, and Monday-first calendar controls.
 - Set production APP_DEBUG=false, rotate logs, and keep environment secrets out of images and source control.
 - Document worker, scheduler, backup, migration, and rollback commands in an operations/runbook document when deployment is introduced.
 
@@ -1225,7 +1294,7 @@ Recipe images are optional. Use Laravel Storage, generated filenames, explicit s
 
 - Fixed-precision decimal handling prevents silent quantity corruption.
 - Foreign keys, unique constraints, transitions, locks, and transactions defend invariants even under concurrent requests.
-- User deletion/export and retention behaviour must be designed before real personal data is collected.
+- Self-service deletion/export and custom retention are outside the MVP. Keep normalized ownership, nullable snapshot source references, and Storage-managed image paths so later export, deletion, or anonymisation remains feasible.
 - Backups and logs contain personal data and require the same access/retention controls as the database.
 - Passkey and two-factor secrets/recovery codes stay in the existing encrypted/hashed Fortify-compatible representation; never include them in logs or DTOs.
 - Dependency updates and container base images should be scanned and patched routinely.
@@ -1243,19 +1312,22 @@ The following decisions summarize the architecture. “MVP” is necessary to im
 | ADR-03 / MVP | Keep controllers/Livewire components thin; use focused verb-named actions for use cases; keep local behaviour on Eloquent models/value objects. | Large controllers, “fat model does everything,” and a single DinnerService all create mixed responsibilities. | More small classes and naming decisions. Combine only when an action is a trivial one-line model operation with no rule or reuse. |
 | ADR-04 / MVP | Use Eloquent directly and add purpose-named query objects only for complex recommendation/grocery reads. | Generic repository interfaces obscure Eloquent and duplicate its API; CQRS read stores are unnecessary. | Code is coupled to Laravel/MySQL, intentionally. Reconsider a repository at a real external persistence boundary or when two implementations exist. |
 | ADR-05 / MVP | Store DECIMAL(18,6), carry decimal strings in PHP, and calculate with BCMath at scale six. | PHP floats silently drift; arbitrary-precision libraries add dependencies before needed; storing minor integer units cannot represent all unit groups as clearly. | Six decimal places and arithmetic helper discipline are required. Reconsider precision after real recipe/package data proves it inadequate. |
-| ADR-06 / MVP | Model a fixed UnitCode/measurement compatibility matrix in code/config and ingredient-specific package definitions in MySQL. | User-defined global unit conversion is unsafe; treating package names as plain strings loses equality/content; a universal conversion table overgeneralizes count units. | New supported units require a code release. Reconsider editable units only with a concrete administration/use case. |
+| ADR-06 / MVP | Model fixed UnitCode rules in code/config, ingredient-plus-semantic count compatibility, and ingredient-specific package definitions in MySQL. Preserve known package context while calculating in metric content. | User-defined global conversion is unsafe; package strings lose equality/content; universal count conversion would falsely combine cloves/bulbs/slices or different ingredients. | New units require a release and package display adds stored context. Reconsider approximate count-to-mass only as explicit ingredient rules after MVP. |
 | ADR-07 / MVP | Persist PantryEntry total; persist reservations; derive reserved and available. | Persisting total, reserved, and available creates three mutable truths; ledger-only inventory is more complex for the MVP. | Aggregation is required to display availability. Add cached counters only after measured query pressure and invariant-preserving updates. |
-| ADR-08 / MVP | Snapshot PlannedDinnerRequirement when a dinner is selected. | Reading live RecipeIngredient rows saves space but silently changes existing plans after recipe edits; full recipe versioning is more machinery. | Snapshots duplicate data. Reconsider full immutable recipe versions if audit/history/export requirements expand. |
+| ADR-08 / MVP | Snapshot recipe identity/metadata and PlannedDinnerRequirement data for every occurrence. History-based planning, duplication, restore, and unresolved-at-cooking all use the snapshot. | Reading live RecipeIngredient rows saves space but silently changes history and fails after archive/deletion; full recipe versioning is more machinery. | Snapshots duplicate data. Reconsider full immutable recipe versions if catalogue audit/version comparison expands. |
 | ADR-09 / MVP | Use synchronous MySQL transactions and pessimistic locks for reservation, stock, cooking, and generated grocery changes. | Optimistic retry everywhere complicates the UI; queued/eventual reservation permits double allocation; distributed locks add another system. | Contention can reduce throughput. Reconsider lock granularity only with measured contention and concurrency tests. |
-| ADR-10 / MVP | Calculate recommendations on demand with a deterministic weighted score and explicit explanations. | Random ordering, opaque AI, persisted ranking tables, and a rules engine are not justified by the epics. | Weights are product assumptions and calculations grow with catalogue size. Reconsider/cache/version when measured latency or user research demands it. |
-| ADR-11 / MVP | Derive generated grocery items from requirement shortfalls using stable keys and contribution rows; preserve manual rows separately. | Storing only display strings loses traceability; rebuilding the whole list loses checks/manual work; event-sourced projections overcomplicate recovery. | Regeneration writes several rows. Reconsider async projection only when versioned idempotency and UI staleness are acceptable. |
-| ADR-12 / MVP | Treat staples as covered and do not reserve/deduct them; exclude them from groceries unless staple_needs_purchase is explicitly set. | Infinite pantry quantities conflate preference and stock; reserving staples contradicts assumed availability; requiring a numeric pantry entry defeats the staple story. | Exact staple stock remains unknown. Reconsider if “usually stocked but currently out” must affect recommendations as well as groceries. |
+| ADR-10 / MVP | Calculate recommendations on demand with configurable 60Q + 20F − 10P − 10M − 10I scoring and explicit explanations. | Random ordering, opaque AI, persisted rankings, and a rules engine are not justified. | Initial weights are product-approved but tunable in one config; calculation grows with catalogue size. Reconsider/cache/version with measured latency or research. |
+| ADR-11 / MVP | Derive generated groceries with stable keys/contributions, transient user overrides, increase-sensitive checked state, and no long-term shopping history; preserve manual rows. | Display-only strings lose truth; persistent generated overrides become stale; rebuilding indiscriminately loses checks/manual work; shopping sessions add premature scope. | Regeneration owns more state transitions. Add completed shopping sessions only when shopping history is a real feature. |
+| ADR-12 / MVP | Separate is_staple from is_currently_available. Only an available staple is assumed covered; temporarily unavailable ingredients create shortfalls/groceries without deleting pantry totals. | Infinite quantities conflate preference and state; a single staple flag cannot represent “normally stocked but out”; deleting stock loses user data. | Two booleans need an explicit truth table and reconciliation. Reconsider richer availability reasons only with a concrete UX need. |
 | ADR-13 / MVP | Use per-user ownership and explicit policies/query scoping. | Premature household tenancy/polymorphic owners burden all foreign keys and policies. | A future household migration is required. Reconsider when shared planning is approved, before significant multi-user product data exists if possible. |
 | ADR-14 / MVP | Use Livewire 4 pages and Flux components, with Livewire Form objects for substantial forms. | A React/Vue SPA duplicates validation/API work; Blade-only forms make highly interactive planning less direct. | Server round trips require careful eager loading/loading states. Reconsider a separate client only when offline/native/API requirements appear. |
 | ADR-15 / Growth | Emit events only for real after-commit side effects; queue only slow/retriable edge work. | Event-driven orchestration hides core control flow and makes correctness depend on workers. | The action knows its core collaborators. Split when a side effect can independently fail and eventual consistency is acceptable. |
 | ADR-16 / MVP | Use MySQL as development/test production-parity database for persistence-sensitive tests. | SQLite is fast but does not prove MySQL DECIMAL, locking, or concurrency behaviour. | MySQL tests cost startup time. Pure unit tests remain fast; use targeted integration tests and parallel CI services. |
-| ADR-17 / MVP | Archive ingredients/recipes with explicit archived_at state; retain historical plan snapshots. | Hard deletion breaks history; applying SoftDeletes indiscriminately can hide required joins and complicate unique keys. | Queries must explicitly filter active catalogue data. Reconsider SoftDeletes only for a separately defined recovery requirement. |
+| ADR-17 / MVP | Archive ingredients/recipes with explicit archived_at and retain independent dinner snapshots. Archived recipes are excluded from editing/recommendations but archive/history actions can plan snapshots, duplicate occurrences, and optionally restore recipes. | Hard deletion breaks history; SoftDeletes everywhere hides joins; forbidding archived/history planning contradicts the rolling workflow. | Queries/actions must distinguish active-catalogue selection from archive/history snapshot planning. Reconsider full recipe versioning only with broader audit needs. |
 | ADR-18 / Postponed | Do not add DTOs universally. Use immutable data/value objects only for quantities, calculation inputs/results, and unstable external boundaries. | DTO-per-request/model creates mapping code without a boundary; raw arrays are too weak for calculation contracts. | Some actions accept models and named scalars. Introduce a DTO when argument count/shape or serialization makes the contract clearer. |
+| ADR-19 / MVP | Use one rolling DinnerPlan per user. Planned rows are the ordered active list; Cooked/Cancelled rows are history, and Cancelled may be restored. | Calendar weeks/named plans impose management and a current-plan selector unrelated to irregular cooking. | The plan table is a singleton aggregate and history grows under it. Reconsider multiple plans only for an approved household/calendar use case. |
+| ADR-20 / MVP | Reconcile affected reservations globally in explicit-date, position, creation order whenever supply, demand, or order changes. | Preserving old allocations violates earliest-dinner priority; manual allocation adds complex controls; queue-based reconciliation risks stale stock. | More rows are locked/rebuilt per mutation. Reconsider incremental optimization only after equivalent deterministic/concurrency tests and measured contention. |
+| ADR-21 / MVP | NonExactStatus is exactly Required or Optional. Required may create a check/missing confirmation; Optional affects neither score nor automatic grocery generation. | A free-form status is inconsistent; extra statuses duplicate the written description and add ambiguous rules. | Two states may be limiting later. Add a status only with distinct calculation/UI behaviour. |
 
 ### 21.1 Decision ownership
 
@@ -1282,13 +1354,15 @@ These rules translate the architecture into reviewable code conventions.
 3. A non-exact amount is explicit state, not zero or null accidentally interpreted as zero.
 4. Scale from the immutable source amount. Round only for display or a specifically documented storage boundary.
 5. Use enums for closed state/unit sets and exhaustive match expressions when behaviour differs.
-6. Put local invariants and transitions on the relevant model/value object; put cross-aggregate operations in actions with DB::transaction.
-7. Lock affected rows in stable ascending-ID order. Do no external I/O inside a transaction.
-8. Use foreign keys, unique/check constraints where MySQL supports the invariant, and duplicate the critical check in domain code for useful errors.
-9. Scope Eloquent relations/queries explicitly and eager-load; do not introduce lazy-loading-dependent loops.
-10. Do not add a generic BaseRepository, BaseService, universal Result wrapper, or application-specific dependency injection framework.
-11. Deployed migrations are immutable. Use additive/compatible schema transitions and a later cleanup migration.
-12. Use Storage disks for files, config for tunable values, and environment variables only from config files.
+6. NonExactStatus has only Required and Optional; do not infer behaviour from description text.
+7. Put local invariants and transitions on the relevant model/value object; put cross-aggregate operations in actions with DB::transaction.
+8. Lock the rolling plan and affected rows in one stable order; reservation iteration follows planned-date/list/creation priority. Do no external I/O inside a transaction.
+9. Use foreign keys, unique/check constraints where MySQL supports the invariant, and duplicate the critical check in domain code for useful errors.
+10. Scope Eloquent relations/queries explicitly and eager-load; do not introduce lazy-loading-dependent loops.
+11. Do not add a generic BaseRepository, BaseService, universal Result wrapper, or application-specific dependency injection framework.
+12. Deployed migrations are immutable. Use additive/compatible schema transitions and a later cleanup migration.
+13. Use Storage disks for files, config for tunable values, and environment variables only from config files.
+14. Keep calculated grocery amounts/contributions separate from temporary display overrides.
 
 ### 22.3 Events, jobs, API, and external boundary rules
 
@@ -1328,7 +1402,7 @@ There is no legacy Dinner Decider domain implementation to rewrite. The applicat
 - Correct MustVerifyEmail integration and add the verified-route test.
 - Decide/document supported PHP/Node versions and make CI use a MySQL service.
 - Remove or clarify the SQLite post-create step for this MySQL-only project.
-- Confirm Dutch/English UI locale, Europe/Amsterdam display timezone, and decimal input policy while retaining UTC storage.
+- Configure the English-only interface with Europe/Amsterdam presentation time, DD-MM-YYYY, 24-hour time, Monday-first calendars, metric units, and comma/point decimal input while retaining UTC storage.
 - Add ext-bcmath to Composer platform requirements because product correctness depends on it; the Docker runtime already has the extension.
 - Keep database queue features disabled unless a worker/after-commit setup is added.
 
@@ -1336,10 +1410,10 @@ This stage resolves existing inconsistencies; it does not introduce domain layer
 
 ### Stage 1 — Measurement, catalogue, and serving scale (Epics 1, 2, and 4)
 
-1. Add measurement enums, Quantity, QuantityInputParser, converter/formatter, and unit tests.
+1. Add measurement enums (including ingredient-specific bulb/count compatibility), Quantity, QuantityInputParser, converter/formatter, and display-policy tests.
 2. Add Ingredient and IngredientPackage migrations/models/policies/factories.
-3. Add Recipe, RecipeIngredient, and RecipeStep migrations/models/policies/factories.
-4. Implement create/update/archive actions and Livewire/Flux catalogue pages as complete vertical slices.
+3. Add Recipe, RecipeIngredient with Required/Optional NonExactStatus, and RecipeStep migrations/models/policies/factories.
+4. Implement minimum required fields, nullable optional metadata/unknown filtering, placeholder/optional secure image handling, create/update/archive actions, and Livewire/Flux catalogue pages.
 5. Add RecipeScaler and a servings preview with exact/non-exact/package acceptance tests.
 
 Exit condition: an authenticated user can maintain ingredients/recipes and reliably scale a recipe without pantry concepts.
@@ -1347,29 +1421,29 @@ Exit condition: an authenticated user can maintain ingredients/recipes and relia
 ### Stage 2 — Pantry and recommendations (Epics 3 and 5)
 
 1. Add PantryEntry schema/model and deterministic merge key.
-2. Implement stock/staple actions, policies, and pantry UI.
-3. Implement AvailablePantry query and RecommendationEngine with documented scoring fixtures.
+2. Implement stock plus is_staple/is_currently_available actions, policies, package-context display, and pantry UI.
+3. Implement AvailablePantry query and config-driven Q/F/P/M/I RecommendationEngine with documented scoring fixtures.
 4. Build recommendation results/explanations and query-count tests.
 
 Exit condition: pantry totals are precise and active recipes receive deterministic, explainable pantry-aware rankings.
 
 ### Stage 3 — Dinner planning and reservation lifecycle (Epics 6 and 7)
 
-1. Add DinnerPlan, PlannedDinner, PlannedDinnerRequirement, and IngredientReservation schema/models.
-2. Implement PlanDinner with snapshot/allocation/locking.
-3. Implement change servings, cancel, and cook transitions.
-4. Reconcile affected current-plan shortfalls after stock additions/staple changes.
-5. Add MySQL concurrency, rollback, and exactly-once consumption tests.
-6. Build the planning/calendar/list UI with explicit state and loading/error feedback.
+1. Add singleton rolling DinnerPlan, snapshot-rich PlannedDinner/Requirement, and IngredientReservation schema/models.
+2. Implement PlanDinner plus archive/history-snapshot planning and independent duplication.
+3. Implement servings/date/order changes, cancel, restore, remove, and unresolved-confirmed cook transitions.
+4. Reconcile affected reservations globally by date/list/creation priority after every supply/demand/order change.
+5. Add MySQL concurrency, rollback, restoration, and exactly-once consumption tests.
+6. Build active rolling-list/history UI with Monday-first optional dates and unresolved confirmation feedback.
 
 Exit condition: simultaneous planning cannot over-reserve, and cook/cancel transitions preserve pantry invariants.
 
 ### Stage 4 — Grocery list (Epic 8)
 
 1. Add GroceryList, GroceryItem, and GroceryItemContribution schema/models.
-2. Implement pure GroceryCalculator and transactional RegenerateGroceryList.
-3. Connect regeneration to all relevant plan/pantry actions.
-4. Add manual items, checking, contribution explanations, and idempotency tests.
+2. Implement pure GroceryCalculator and transactional RegenerateGroceryList with package context.
+3. Connect regeneration to every relevant plan/pantry/availability action.
+4. Add temporary generated-quantity edits, manual items, quantity-increase unchecking/notices, completed clearing, contribution explanations, and no-history/idempotency tests.
 
 Exit condition: generated shortfalls remain synchronized without overwriting manual items or shopping state.
 
@@ -1377,9 +1451,9 @@ Exit condition: generated shortfalls remain synchronized without overwriting man
 
 - Run accessibility, responsive, security, and end-to-end flow reviews.
 - Seed a realistic Dutch metric dataset and establish query/response baselines.
-- Add image storage only if needed for MVP acceptance.
+- Verify optional secure image upload/removal and the standard no-image placeholder; do not add advanced transformations/retention.
 - Create deployment/backup/restore/worker runbooks.
-- Resolve open product questions that affect visible behaviour.
+- Verify every resolved product decision in section 24 through acceptance tests and an MVP walkthrough.
 
 Avoid creating every proposed folder up front. A directory appears with its first concrete class. Existing settings SFCs and starter tests may migrate toward these conventions only when touched; no big-bang rewrite is warranted.
 
@@ -1393,52 +1467,51 @@ Avoid creating every proposed folder up front. A directory appears with its firs
 - BCMath and pdo_mysql are installed in the application container.
 - Product data is not yet present in the reviewed development/testing databases.
 
-### 24.2 Architectural assumptions pending product confirmation
+### 24.2 Resolved MVP product decisions
 
-| Assumption used by this design | Consequence if changed |
+The previously open product questions are resolved and are authoritative for MVP implementation:
+
+| Decision | Architectural consequence |
 | --- | --- |
-| Product data belongs to one user for MVP. | Shared use requires Household membership, policy, and foreign-key migration. |
-| Each user has one persistent current DinnerPlan, with Cooked/Cancelled PlannedDinner history retained inside it. | Multiple named/overlapping or archived plans need different uniqueness and grocery-list rules. |
-| Recipe edits do not mutate existing planned-dinner snapshots. | Live-linked plans would require reallocation prompts and a different audit story. |
-| Staples are assumed fully available and are never reserved or consumed; staple_needs_purchase creates a non-quantified grocery check item without changing recommendation coverage. | A “staple but out of stock” state that affects recommendations needs another explicit availability override. |
-| Non-exact requirements are reported for explanation/grocery checks but do not affect recommendation scores, reservations, or deductions. | Quantifying them later requires editing the recipe ingredient or adding a separately defined estimate. |
-| Adding pantry stock allocates newly available quantity to active shortfalls by planned date, planned-dinner ID, then requirement ID; existing reservations remain stable. | A user-choice or priority model changes reconciliation and grocery results. |
-| Cooking with a remaining shortfall is allowed only after explicit confirmation and deducts only recorded reservations. | Requiring full coverage would block cooking until pantry is reconciled. |
-| Grocery checking records shopping progress but does not automatically add stock to the pantry. | A purchase/receive workflow needs quantity confirmation and a separate action. |
-| Dutch metric input accepts comma or point decimal separators but rejects ambiguous thousands notation. | Broader localization needs locale-aware parsing and formatting tests. |
-| Recipe/pantry images are optional, stored through a public disk initially. | Private images or CDN transformations require access URLs and processing jobs. |
+| One rolling dinner list | One singleton DinnerPlan per user; Planned is the active ordered list, Cooked/Cancelled is history, with no week/name/current selector. |
+| Historical/archive planning | Store complete dinner snapshots; allow archived-recipe and history-based planning, independent duplication, Cancelled restoration, and optional recipe-catalogue restoration. |
+| Cooking with unresolved requirements | Require a current structured confirmation, deduct reservations only, and retain unresolved details in the Cooked snapshot. |
+| Earliest-dinner allocation | Fully reconcile by explicit date, list position, creation time, and ID after every supply/demand/order change; no manual allocation UI. |
+| Temporary staple unavailability | Store is_staple separately from is_currently_available; unavailable ingredients produce shortfalls without deleting stock. |
+| Increased checked grocery amount | Clear checked_at on increase, retain it for equal/decreased amounts, and expose previous/new amount feedback. |
+| No shopping history | Keep checked items only until cleared; delete removed manual/no-longer-required generated rows; no completed-session model. |
+| Package display | Preserve package context and show package plus metric totals where meaningful; grocery need remains exact metric and never rounds to retail packs. |
+| Ingredient-specific count units | Match ingredient plus semantic unit, include bulb, and prohibit automatic count-to-mass conversion. |
+| Minimal recipe requirements | Require name, default servings, one ingredient, and one step; other metadata/image is nullable/unknown and does not block recommendation eligibility. |
+| English with Dutch conventions | English-only MVP, metric units, DD-MM-YYYY, 24-hour time, Monday-first calendars, decimal comma or point. |
+| Deferred account/data lifecycle | No self-service delete/export/custom retention; keep snapshots, ownership, Storage paths, and relationships future-safe. |
+| Configurable recommendation weights | Use the Q/F/P/M/I formula in one config/scoring service, with quantity coverage dominant and non-exact rows excluded. |
+| Temporary generated-quantity edits | Store a display override separate from calculated truth and clear it on any relevant recalculation; manual rows remain unchanged. |
+| Required/Optional non-exact status | Required participates in coverage checks/grocery/cook confirmation; Optional is informational and never automatically missing/purchased. |
 
-### 24.3 Product questions to resolve
+### 24.3 Remaining implementation assumptions and postponed scope
 
-1. Does “dinner plan” mean a rolling list, a calendar week, or multiple named plans? What determines the current plan?
-2. May users plan an archived recipe already in history, duplicate a dinner occurrence, or restore a cancelled dinner?
-3. Should cooking be blocked while any exact/non-exact requirement is missing, or is the explicit-confirmation assumption acceptable?
-4. When pantry stock is added, should automatic allocation favour the earliest dinner, user priority, or ask the user?
-5. Can a staple be temporarily marked unavailable without losing its staple designation?
-6. Should a checked generated grocery item become unchecked when its amount increases?
-7. Should checked/removed generated items remain in shopping history, and for how long?
-8. Are known package quantities displayed as package counts, normalized metric amounts, or both? What rounding is acceptable?
-9. Are count units strictly ingredient-specific as assumed, and can “2 cloves garlic” ever convert to a measured mass?
-10. Which recipe fields are required beyond the epic minimum: cuisine, tags, preparation/cooking time, notes, and image?
-11. Is the initial interface Dutch, English, or switchable? Which week start/date format should planning use?
-12. What are account deletion, data export, image retention, and historical dinner retention requirements?
-13. Are recommendation weights acceptable for MVP, or does product want pantry quantity coverage to dominate differently?
-14. Must generated grocery quantities be directly editable, and if so should an override survive later plan/pantry recalculation?
-15. What values and behaviour should the epic's optional non-exact ingredient status support?
+None of the original 15 product questions remains open. The following narrow implementation assumptions remain documented:
 
-These questions do not prevent implementing the measurement/catalogue foundation. Questions 1–6 should be answered before finalizing dinner-plan/reservation/grocery acceptance criteria.
+- The existing repository already requires accounts, so MVP ownership is per User. Household ownership remains a future migration.
+- Manually removing an unprocessed Planned dinner deletes that occurrence; cancelling retains it in history. If product later wants removed-item history, use Cancelled rather than another status.
+- Europe/Amsterdam is the presentation timezone implied by the Netherlands-friendly convention; timestamps remain UTC in storage.
+- The initial incompatible-measurement penalty is 10 points in config/recommendations.php and may be tuned with the other accepted weights after user testing.
+- Checking a grocery item records shopping progress but does not add stock automatically. A future receive-purchase action would require confirmed quantities.
+- Optional images use the public Storage disk and standard secure upload/deletion behaviour; advanced retention/transformations remain postponed.
+- Basic GroceryItem change timestamps are operational/UI state, not a user-facing shopping-history feature.
 
 ### 24.4 Epic support verification
 
 The final architecture maps every epic to concrete owners and workflows:
 
-- Ingredient/measurement: Ingredient, IngredientPackage, Quantity, unit compatibility, decimal persistence.
-- Recipe catalogue: Recipe aggregate, ordered requirements/instructions, actions/policies/archive.
-- Pantry: PantryEntry totals, staple state, merge key, owned stock actions.
+- Ingredient/measurement: Ingredient, IngredientPackage, Quantity, ingredient-specific count compatibility, package/metric display, decimal persistence.
+- Recipe catalogue: minimally required Recipe aggregate, nullable metadata, ordered ingredients/steps, image placeholder, actions/policies/archive/history snapshots.
+- Pantry: PantryEntry totals/package context, separate staple/current availability, merge keys, owned stock actions.
 - Serving scaling: RecipeScaler from immutable originals with display-only rounding.
-- Pantry recommendations: AvailablePantry query, deterministic RecommendationEngine, explanation view models.
-- Dinner plan: DinnerPlan/PlannedDinner plus snapshotted requirements and state transitions.
-- Reservation lifecycle: locked partial reservations, derived availability, release and exactly-once consumption.
-- Grocery list: derived stable-key items, contribution trace, manual/check state, transactional regeneration.
+- Pantry recommendations: AvailablePantry query, configurable Q/F/P/M/I RecommendationEngine, unavailable-staple handling, explanation view models.
+- Dinner plan: singleton rolling DinnerPlan, active/history queries, complete snapshots, duplicate/cancel/restore/cook transitions.
+- Reservation lifecycle: locked full-priority reconciliation, partial reservations, derived availability, unresolved confirmation/history, exactly-once consumption.
+- Grocery list: stable generated keys/contributions, temporary overrides, increase-sensitive checking, manual/completed state, transactional regeneration without shopping history.
 
 No epic requires a microservice, generic repository, event-sourced aggregate, or asynchronous core workflow.
