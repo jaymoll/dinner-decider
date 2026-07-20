@@ -2,23 +2,31 @@
 
 namespace App\Actions\Pantry;
 
+use App\Actions\DinnerPlans\EnsureDinnerPlan;
+use App\Actions\DinnerPlans\ReconcilePlanReservations;
 use App\Data\Measurements\QuantityInput;
+use App\Models\DinnerPlan;
 use App\Models\PantryEntry;
 use App\Models\User;
 use App\Services\Measurements\UnitConverter;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
-use InvalidArgumentException;
 
 final readonly class UpdatePantryEntry
 {
-    public function __construct(private UnitConverter $converter) {}
+    public function __construct(
+        private UnitConverter $converter,
+        private EnsureDinnerPlan $ensureDinnerPlan,
+        private ReconcilePlanReservations $reconcile,
+    ) {}
 
     public function handle(User $user, PantryEntry $pantryEntry, string $amount): PantryEntry
     {
         Gate::forUser($user)->authorize('update', $pantryEntry);
+        $plan = $this->ensureDinnerPlan->handle($user);
 
-        return DB::transaction(function () use ($pantryEntry, $amount): PantryEntry {
+        return DB::transaction(function () use ($plan, $pantryEntry, $amount): PantryEntry {
+            $lockedPlan = DinnerPlan::query()->lockForUpdate()->findOrFail($plan->id);
             $lockedEntry = PantryEntry::query()->lockForUpdate()->findOrFail($pantryEntry->id);
             $lockedEntry->loadMissing(['ingredient', 'ingredientPackage']);
             $package = $lockedEntry->ingredientPackage;
@@ -31,25 +39,10 @@ final readonly class UpdatePantryEntry
                 packageContentUnit: $package?->content_unit,
             ));
 
-            $reservedAmount = $this->reservedAmount($lockedEntry);
-            if (bccomp($quantity->normalizedAmount, $reservedAmount, $this->scale()) < 0) {
-                throw new InvalidArgumentException('The pantry total cannot be lower than its reserved amount.');
-            }
-
             $lockedEntry->update(['total_normalized_amount' => $quantity->normalizedAmount]);
+            $this->reconcile->handle($lockedPlan, [$lockedEntry->ingredient_id]);
 
             return $lockedEntry->refresh()->load(['ingredient', 'ingredientPackage']);
         }, attempts: 3);
-    }
-
-    /** @return numeric-string */
-    private function reservedAmount(PantryEntry $pantryEntry): string
-    {
-        return '0';
-    }
-
-    private function scale(): int
-    {
-        return (int) config('measurements.calculation_scale', 6);
     }
 }

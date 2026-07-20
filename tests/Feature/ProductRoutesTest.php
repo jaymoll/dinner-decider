@@ -18,6 +18,7 @@ class ProductRoutesTest extends TestCase
         $this->get(route('recipes.index'))->assertRedirect(route('login'));
         $this->get(route('pantry.index'))->assertRedirect(route('login'));
         $this->get(route('recommendations.index'))->assertRedirect(route('login'));
+        $this->get(route('dinner-plans.index'))->assertRedirect(route('login'));
     }
 
     public function test_product_routes_require_a_verified_email(): void
@@ -28,6 +29,7 @@ class ProductRoutesTest extends TestCase
         $this->actingAs($user)->get(route('recipes.index'))->assertRedirect(route('verification.notice'));
         $this->actingAs($user)->get(route('pantry.index'))->assertRedirect(route('verification.notice'));
         $this->actingAs($user)->get(route('recommendations.index'))->assertRedirect(route('verification.notice'));
+        $this->actingAs($user)->get(route('dinner-plans.index'))->assertRedirect(route('verification.notice'));
     }
 
     public function test_verified_users_can_view_catalogue_pages(): void
@@ -38,6 +40,7 @@ class ProductRoutesTest extends TestCase
         $this->actingAs($user)->get(route('recipes.index'))->assertOk()->assertSee('Recipes');
         $this->actingAs($user)->get(route('pantry.index'))->assertOk()->assertSee('Pantry');
         $this->actingAs($user)->get(route('recommendations.index'))->assertOk()->assertSee('Recommendations');
+        $this->actingAs($user)->get(route('dinner-plans.index'))->assertOk()->assertSee('Dinner plan');
     }
 
     public function test_users_cannot_open_another_users_catalogue_records(): void

@@ -28,5 +28,6 @@ class DatabaseSeeder extends Seeder
         $user->save();
 
         $this->call(StageOneCatalogueSeeder::class);
+        $this->call(StageThreeDinnerPlanSeeder::class);
     }
 }

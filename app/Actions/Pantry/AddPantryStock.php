@@ -2,9 +2,12 @@
 
 namespace App\Actions\Pantry;
 
+use App\Actions\DinnerPlans\EnsureDinnerPlan;
+use App\Actions\DinnerPlans\ReconcilePlanReservations;
 use App\Data\Measurements\QuantityInput;
 use App\Enums\MeasurementGroup;
 use App\Enums\UnitCode;
+use App\Models\DinnerPlan;
 use App\Models\Ingredient;
 use App\Models\IngredientPackage;
 use App\Models\PantryEntry;
@@ -17,7 +20,11 @@ use InvalidArgumentException;
 
 final readonly class AddPantryStock
 {
-    public function __construct(private UnitConverter $converter) {}
+    public function __construct(
+        private UnitConverter $converter,
+        private EnsureDinnerPlan $ensureDinnerPlan,
+        private ReconcilePlanReservations $reconcile,
+    ) {}
 
     /** @param array{ingredient_id: int, amount: string, unit?: string|null, ingredient_package_id?: int|null} $data */
     public function handle(User $user, array $data): PantryEntry
@@ -26,8 +33,10 @@ final readonly class AddPantryStock
         $ingredient = Ingredient::query()->whereBelongsTo($user)->active()->findOrFail($data['ingredient_id']);
         $quantity = $this->quantity($ingredient, $data);
         $mergeKey = PantryEntry::mergeKeyFor($quantity);
+        $plan = $this->ensureDinnerPlan->handle($user);
 
-        return DB::transaction(function () use ($user, $ingredient, $quantity, $mergeKey): PantryEntry {
+        return DB::transaction(function () use ($plan, $user, $ingredient, $quantity, $mergeKey): PantryEntry {
+            $lockedPlan = DinnerPlan::query()->lockForUpdate()->findOrFail($plan->id);
             $entry = PantryEntry::query()
                 ->whereBelongsTo($user)
                 ->where('ingredient_id', $ingredient->id)
@@ -36,7 +45,7 @@ final readonly class AddPantryStock
                 ->first();
 
             if ($entry === null) {
-                return PantryEntry::query()->create([
+                $entry = PantryEntry::query()->create([
                     'user_id' => $user->id,
                     'ingredient_id' => $ingredient->id,
                     'ingredient_package_id' => $quantity->ingredientPackageId,
@@ -44,13 +53,15 @@ final readonly class AddPantryStock
                     'total_normalized_amount' => $quantity->normalizedAmount,
                     'compatibility_key' => (string) $quantity->compatibilityKey,
                     'merge_key' => $mergeKey,
-                ])->load(['ingredient', 'ingredientPackage']);
+                ]);
+            } else {
+                $entry->update([
+                    'total_normalized_amount' => bcadd($entry->total_normalized_amount, $quantity->normalizedAmount, $this->scale()),
+                    'display_unit' => $entry->ingredient_package_id === null ? $quantity->unit : null,
+                ]);
             }
 
-            $entry->update([
-                'total_normalized_amount' => bcadd($entry->total_normalized_amount, $quantity->normalizedAmount, $this->scale()),
-                'display_unit' => $entry->ingredient_package_id === null ? $quantity->unit : null,
-            ]);
+            $this->reconcile->handle($lockedPlan, [$ingredient->id]);
 
             return $entry->refresh()->load(['ingredient', 'ingredientPackage']);
         }, attempts: 3);

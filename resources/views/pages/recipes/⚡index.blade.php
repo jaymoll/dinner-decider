@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\DinnerPlans\PlanDinner;
 use App\Actions\Recipes\ArchiveRecipe;
 use App\Models\Recipe;
 use App\Models\RecipeCategory;
@@ -36,6 +37,13 @@ new #[Title('Recipes')] class extends Component {
         Flux::toast(variant: 'success', text: 'Recipe archived.');
     }
 
+    public function planDinner(int $recipeId, PlanDinner $planDinner): void
+    {
+        $recipe = Recipe::query()->whereBelongsTo($this->user())->active()->findOrFail($recipeId);
+        $planDinner->handle($this->user(), $recipe, (string) $recipe->default_servings);
+        Flux::toast(variant: 'success', text: 'Dinner added to your plan.');
+    }
+
     #[Computed]
     public function recipes(): LengthAwarePaginator
     {
@@ -66,7 +74,7 @@ new #[Title('Recipes')] class extends Component {
         @forelse ($this->recipes as $recipe)
             <flux:card wire:key="recipe-{{ $recipe->id }}" class="overflow-hidden p-0!">
                 @if ($recipe->image_path)<img src="{{ Storage::disk('public')->url($recipe->image_path) }}" alt="{{ $recipe->name }}" class="h-44 w-full object-cover" />@else<div class="flex h-44 items-center justify-center bg-zinc-100 text-zinc-400 dark:bg-zinc-800"><flux:icon.photo class="size-12" /></div>@endif
-                <div class="space-y-4 p-5"><div><flux:heading size="lg">{{ $recipe->name }}</flux:heading><flux:text class="mt-1">{{ $recipe->default_servings }} servings · {{ $recipe->ingredients_count }} ingredients</flux:text></div><div class="flex flex-wrap gap-2">@foreach ($recipe->categories as $recipeCategory)<flux:badge>{{ $recipeCategory->name }}</flux:badge>@endforeach @foreach ($recipe->tags as $recipeTag)<flux:badge color="zinc">{{ $recipeTag->name }}</flux:badge>@endforeach</div><div class="flex justify-end gap-2"><flux:button :href="route('recipes.show', $recipe)" wire:navigate size="sm" variant="primary">View</flux:button><flux:button :href="route('recipes.edit', $recipe)" wire:navigate size="sm" variant="ghost">Edit</flux:button><flux:button wire:click="archive({{ $recipe->id }})" wire:confirm="Archive this recipe?" size="sm" variant="ghost">Archive</flux:button></div></div>
+                <div class="space-y-4 p-5"><div><flux:heading size="lg">{{ $recipe->name }}</flux:heading><flux:text class="mt-1">{{ $recipe->default_servings }} servings · {{ $recipe->ingredients_count }} ingredients</flux:text></div><div class="flex flex-wrap gap-2">@foreach ($recipe->categories as $recipeCategory)<flux:badge>{{ $recipeCategory->name }}</flux:badge>@endforeach @foreach ($recipe->tags as $recipeTag)<flux:badge color="zinc">{{ $recipeTag->name }}</flux:badge>@endforeach</div><div class="flex justify-end gap-2"><flux:button wire:click="planDinner({{ $recipe->id }})" size="sm" variant="primary">Plan dinner</flux:button><flux:button :href="route('recipes.show', $recipe)" wire:navigate size="sm">View</flux:button><flux:button :href="route('recipes.edit', $recipe)" wire:navigate size="sm" variant="ghost">Edit</flux:button><flux:button wire:click="archive({{ $recipe->id }})" wire:confirm="Archive this recipe?" size="sm" variant="ghost">Archive</flux:button></div></div>
             </flux:card>
         @empty
             <flux:callout class="md:col-span-2 xl:col-span-3" icon="book-open">No recipes found.</flux:callout>

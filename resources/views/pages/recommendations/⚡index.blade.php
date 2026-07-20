@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\DinnerPlans\PlanDinner;
 use App\Data\Recommendations\IngredientMatch;
 use App\Data\Recommendations\RecommendationResult;
 use App\Models\Recipe;
@@ -34,6 +35,14 @@ new #[Title('Recommendations')] class extends Component {
         unset($this->recommendations);
     }
 
+    public function planDinner(int $recipeId, PlanDinner $planDinner): void
+    {
+        $recipe = Recipe::query()->whereBelongsTo($this->user())->active()->findOrFail($recipeId);
+        $servings = filled($this->appliedServings) ? $this->appliedServings : (string) $recipe->default_servings;
+        $planDinner->handle($this->user(), $recipe, $servings);
+        \Flux\Flux::toast(variant: 'success', text: 'Dinner added to your plan.');
+    }
+
     /** @return LengthAwarePaginator<int, RecommendationResult> */
     #[Computed]
     public function recommendations(): LengthAwarePaginator
@@ -66,7 +75,7 @@ new #[Title('Recommendations')] class extends Component {
                         <div wire:key="match-{{ $result->recipe->id }}-{{ $loop->index }}" class="flex items-start justify-between gap-3 text-sm"><div><span class="font-medium">{{ $match->ingredientName }}</span>@if (! $match->exact)<div class="text-zinc-500">{{ $match->description }} · {{ str($match->nonExactStatus)->headline() }} · {{ $match->unitLabel }}</div>@endif</div><div class="text-right"><flux:badge>{{ str($match->status)->headline() }}</flux:badge>@if ($match->exact)<div class="mt-1 text-zinc-500">required {{ $this->amountLabel($match->requiredAmount) }} {{ $match->unitLabel }} · available {{ $this->amountLabel($match->availableAmount) }} · missing {{ $this->amountLabel($match->missingAmount) }}</div>@endif</div></div>
                     @endforeach
                 </div></details>
-                <flux:button :href="route('recipes.show', $result->recipe)" wire:navigate variant="primary">View recipe</flux:button>
+                <div class="flex gap-2"><flux:button :href="route('recipes.show', $result->recipe)" wire:navigate>View recipe</flux:button><flux:button wire:click="planDinner({{ $result->recipe->id }})" variant="primary">Plan dinner</flux:button></div>
             </flux:card>
         @empty
             <flux:callout>No active recipes yet. The recipe catalogue remains available for unranked browsing.</flux:callout>

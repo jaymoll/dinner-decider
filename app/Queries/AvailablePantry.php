@@ -15,11 +15,13 @@ final class AvailablePantry
 {
     public function __construct(private readonly QuantityFormatter $formatter) {}
 
-    public function get(User $user): PantryAvailability
+    public function get(User $user, bool $includeReservationDetails = false): PantryAvailability
     {
         $entries = PantryEntry::query()
             ->whereBelongsTo($user)
             ->with(['ingredient', 'ingredientPackage'])
+            ->when($includeReservationDetails, fn ($query) => $query->with('reservations.requirement.plannedDinner'))
+            ->withSum('reservations as reserved_normalized_amount', 'normalized_amount')
             ->oldest('id')
             ->get();
 
@@ -69,7 +71,7 @@ final class AvailablePantry
     /** @return numeric-string */
     private function reservedAmount(PantryEntry $entry): string
     {
-        return '0';
+        return (string) ($entry->reserved_normalized_amount ?? '0');
     }
 
     private function scale(): int

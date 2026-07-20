@@ -1021,6 +1021,8 @@ Each recommendation view model includes enough explanation to answer “why?”:
 
 ### 15.2 Planning and reservation allocation
 
+Stage 3 implements this design with `DinnerPlan` as the per-user lock root, snapshot-backed `PlannedDinnerRequirement` rows, and `IngredientReservation` allocations. All supply, demand, and priority mutations call the same `ReconcilePlanReservations` workflow with deadlock retries. `AvailablePantry` subtracts a reservation aggregate in its existing bounded query, so recommendations immediately reflect planned dinners without a refresh projection or event pipeline.
+
 There is one rolling DinnerPlan for each user. Its Planned occurrences are the active ordered list; Cooked and Cancelled occurrences remain queryable as history, so no plan selector, plan name, or week boundary exists.
 
 PlanDinner runs a database transaction for an active catalogue recipe:

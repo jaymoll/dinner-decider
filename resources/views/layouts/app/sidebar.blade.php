@@ -27,6 +27,9 @@
                     <flux:sidebar.item icon="sparkles" :href="route('recommendations.index')" :current="request()->routeIs('recommendations.*')" wire:navigate>
                         {{ __('Recommendations') }}
                     </flux:sidebar.item>
+                    <flux:sidebar.item icon="calendar-days" :href="route('dinner-plans.index')" :current="request()->routeIs('dinner-plans.*')" wire:navigate>
+                        {{ __('Dinner plan') }}
+                    </flux:sidebar.item>
                 </flux:sidebar.group>
             </flux:sidebar.nav>
 

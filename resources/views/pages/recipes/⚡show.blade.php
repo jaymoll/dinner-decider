@@ -1,5 +1,7 @@
 <?php
 
+use App\Actions\DinnerPlans\PlanArchivedRecipe;
+use App\Actions\DinnerPlans\PlanDinner;
 use App\Data\Measurements\QuantityInput;
 use App\Enums\QuantityType;
 use App\Models\Recipe;
@@ -23,6 +25,16 @@ new #[Title('Recipe')] class extends Component {
     public function mount(Recipe $recipe): void { Gate::authorize('view', $recipe); $this->recipe = $recipe->load(['ingredients.ingredient', 'ingredients.ingredientPackage', 'steps', 'categories', 'tags']); $this->selectedServings = $recipe->default_servings; }
     public function updatedSelectedServings(): void { $this->validateOnly('selectedServings', ['selectedServings' => ['required', 'integer', 'min:1', 'max:1000']]); unset($this->scaledIngredients); }
     public function resetServings(): void { $this->selectedServings = $this->recipe->default_servings; unset($this->scaledIngredients); }
+    public function planDinner(PlanDinner $planDinner, PlanArchivedRecipe $planArchivedRecipe): void
+    {
+        $this->validate(['selectedServings' => ['required', 'integer', 'min:1', 'max:1000']]);
+        if ($this->recipe->archived_at === null) {
+            $planDinner->handle(auth()->user(), $this->recipe, (string) $this->selectedServings);
+        } else {
+            $planArchivedRecipe->handle(auth()->user(), $this->recipe, (string) $this->selectedServings);
+        }
+        \Flux\Flux::toast(variant: 'success', text: 'Dinner added to your plan.');
+    }
 
     #[Computed]
     public function scaledIngredients(): array
@@ -50,7 +62,7 @@ new #[Title('Recipe')] class extends Component {
     @if (session('status'))<flux:callout variant="success" icon="check-circle">{{ session('status') }}</flux:callout>@endif
     <div class="grid gap-8 lg:grid-cols-3">
         <div class="space-y-5 lg:col-span-2">
-            <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-start"><div><div class="flex flex-wrap items-center gap-2"><flux:heading size="xl">{{ $recipe->name }}</flux:heading>@if ($recipe->archived_at)<flux:badge>Archived</flux:badge>@endif</div><flux:text class="mt-2">{{ $recipe->description ?: 'No description provided.' }}</flux:text></div><div class="flex gap-2">@if (! $recipe->archived_at)<flux:button :href="route('recipes.edit', $recipe)" wire:navigate variant="ghost">Edit</flux:button>@endif<flux:button :href="route('recipes.index')" wire:navigate variant="ghost">Back</flux:button></div></div>
+            <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-start"><div><div class="flex flex-wrap items-center gap-2"><flux:heading size="xl">{{ $recipe->name }}</flux:heading>@if ($recipe->archived_at)<flux:badge>Archived</flux:badge>@endif</div><flux:text class="mt-2">{{ $recipe->description ?: 'No description provided.' }}</flux:text></div><div class="flex gap-2"><flux:button wire:click="planDinner" variant="primary">Plan dinner</flux:button>@if (! $recipe->archived_at)<flux:button :href="route('recipes.edit', $recipe)" wire:navigate variant="ghost">Edit</flux:button>@endif<flux:button :href="route('recipes.index')" wire:navigate variant="ghost">Back</flux:button></div></div>
             <div class="flex flex-wrap gap-2">@foreach ($recipe->categories as $category)<flux:badge>{{ $category->name }}</flux:badge>@endforeach @foreach ($recipe->tags as $tag)<flux:badge color="zinc">{{ $tag->name }}</flux:badge>@endforeach</div>
             <flux:card class="space-y-5">
                 <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><flux:heading size="lg">Ingredients</flux:heading><flux:text class="mt-1">Scaled from the immutable {{ $recipe->default_servings }}-serving source amounts.</flux:text></div><div class="flex items-end gap-2"><div class="w-32"><flux:input wire:model.live="selectedServings" label="Servings" type="number" min="1" /></div><flux:button wire:click="resetServings" variant="ghost">Reset</flux:button></div></div>
