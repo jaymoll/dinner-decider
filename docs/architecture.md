@@ -1411,7 +1411,7 @@ Completed on 17 July 2026:
 
 Stage 0 resolved baseline inconsistencies without introducing domain layering.
 
-### Stage 1 — Measurement, catalogue, and serving scale (Epics 1, 2, and 4)
+### Stage 1 — Measurement, catalogue, and serving scale (Epics 1, 2, and 4) (complete)
 
 Completed on 20 July 2026:
 
@@ -1423,14 +1423,21 @@ Completed on 20 July 2026:
 
 Exit condition met: an authenticated, verified user can maintain ingredients and recipes and reliably preview scaled recipes without pantry concepts.
 
-### Stage 2 — Pantry and recommendations (Epics 3 and 5)
+### Stage 2 — Pantry and recommendations (Epics 3 and 5) (complete)
 
-1. Add PantryEntry schema/model and deterministic merge key.
-2. Implement stock plus is_staple/is_currently_available actions, policies, package-context display, and pantry UI.
-3. Implement AvailablePantry query and config-driven Q/F/P/M/I RecommendationEngine with documented scoring fixtures.
-4. Build recommendation results/explanations and query-count tests.
+Completed on 20 July 2026:
 
-Exit condition: pantry totals are precise and active recipes receive deterministic, explainable pantry-aware rankings.
+1. Added the user-owned PantryEntry schema, model, factory, policy, relationships, non-negative decimal total, compatibility and deterministic merge keys, ownership indexes, and restricted ingredient/package deletion.
+2. Added authorized pantry actions and PantryEntryForm. Additions normalize through the shared quantity kernel, merge under transaction locks with BCMath, and preserve explicit update/remove contracts with a Stage 3 reserved-balance seam fixed at zero for Stage 2.
+3. Added AvailablePantry as the centralized stock read model. It exposes display rows, zero reserved balances, masked availability, calculation buckets, known-package metric aggregation, exact unknown-package isolation, and unlimited available staples.
+4. Added the config-driven RecommendationEngine and GetPantryAwareRecommendations query. Every active owned recipe is scaled from persisted amounts, scored in memory with decimal strings, explained line by line, deterministically sorted, and only then paginated.
+5. Added authenticated Livewire 4 page SFCs and Flux Free interfaces for pantry management and pantry-aware recommendations, while retaining the unranked recipe catalogue.
+6. Made package content conversion immutable once a package is referenced by either a recipe requirement or pantry entry. Referenced definitions are retained if omitted during ingredient editing; a different content amount/unit requires a new definition.
+7. Added focused PHPUnit coverage for exact mass/volume/count merging, semantic count isolation, package behavior, input/ownership rules, scoring fixtures, duplicate consumption, staples and temporary unavailability, non-exact explanations, deterministic tie-breaks, and bounded query counts.
+
+Verification evidence on 20 July 2026: the Stage 2 targeted tests pass against MySQL 8.4 in the Sail container; Laravel Pint and Larastan also pass. The recommendation query remains at six queries as the recipe fixture count grows.
+
+Exit condition met: pantry totals remain precise and non-negative, current availability is derived centrally, and every active recipe receives a deterministic, explainable pantry-aware ranking.
 
 ### Stage 3 — Dinner planning and reservation lifecycle (Epics 6 and 7)
 
@@ -1468,9 +1475,9 @@ Avoid creating every proposed folder up front. A directory appears with its firs
 
 - The application root namespace is App.
 - It runs Laravel 13, PHP 8.5, Livewire 4, Flux UI, Fortify, MySQL 8.4, and a Sail/Docker development environment.
-- Authentication/settings/passkey/2FA starter code and Stage 1 measurement, ingredient, and recipe catalogue code exist; later Dinner Decider domains are not yet implemented.
+- Authentication/settings/passkey/2FA starter code plus Stage 1 measurement/catalogue/recipe functionality and Stage 2 pantry/recommendation functionality exist; dinner planning, reservations, and groceries remain unimplemented.
 - BCMath and pdo_mysql are installed in the application container.
-- Stage 1 schemas are migrated in the reviewed development/testing database; the optional catalogue seeder is deliberately not part of the default DatabaseSeeder.
+- Stage 1 and Stage 2 schemas are migrated in the reviewed MySQL testing database; the default DatabaseSeeder creates a known test account and an idempotent demo catalogue covering ingredient, package, pantry, recipe, archive, and recommendation states.
 
 ### 24.2 Resolved MVP product decisions
 

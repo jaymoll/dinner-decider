@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\CarbonInterface;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -20,7 +21,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property int $id
  * @property string $name
  * @property string $email
- * @property Carbon|null $email_verified_at
+ * @property CarbonInterface|null $email_verified_at
  * @property string $password
  * @property string|null $two_factor_secret
  * @property string|null $two_factor_recovery_codes
@@ -71,6 +72,12 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
     public function recipes(): HasMany
     {
         return $this->hasMany(Recipe::class);
+    }
+
+    /** @return HasMany<PantryEntry, $this> */
+    public function pantryEntries(): HasMany
+    {
+        return $this->hasMany(PantryEntry::class);
     }
 
     /** @return HasMany<RecipeCategory, $this> */

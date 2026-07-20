@@ -16,9 +16,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $ingredient_id
  * @property PackageType $package_type
  * @property string $label
- * @property string|null $content_amount
+ * @property numeric-string|null $content_amount
  * @property UnitCode|null $content_unit
- * @property string|null $normalized_content_amount
+ * @property numeric-string|null $normalized_content_amount
  * @property-read Ingredient $ingredient
  */
 #[Fillable(['ingredient_id', 'package_type', 'label', 'content_amount', 'content_unit', 'normalized_content_amount'])]
@@ -37,6 +37,12 @@ class IngredientPackage extends Model
     public function recipeIngredients(): HasMany
     {
         return $this->hasMany(RecipeIngredient::class);
+    }
+
+    /** @return HasMany<PantryEntry, $this> */
+    public function pantryEntries(): HasMany
+    {
+        return $this->hasMany(PantryEntry::class);
     }
 
     public function hasKnownContents(): bool

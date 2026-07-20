@@ -21,6 +21,12 @@
                     <flux:sidebar.item icon="book-open" :href="route('recipes.index')" :current="request()->routeIs('recipes.*')" wire:navigate>
                         {{ __('Recipes') }}
                     </flux:sidebar.item>
+                    <flux:sidebar.item icon="archive-box" :href="route('pantry.index')" :current="request()->routeIs('pantry.*')" wire:navigate>
+                        {{ __('Pantry') }}
+                    </flux:sidebar.item>
+                    <flux:sidebar.item icon="sparkles" :href="route('recommendations.index')" :current="request()->routeIs('recommendations.*')" wire:navigate>
+                        {{ __('Recommendations') }}
+                    </flux:sidebar.item>
                 </flux:sidebar.group>
             </flux:sidebar.nav>
 

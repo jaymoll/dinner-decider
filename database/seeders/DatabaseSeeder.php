@@ -15,11 +15,18 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
-
-        User::factory()->create([
-            'name' => 'Test User',
+        $user = User::query()->firstOrNew([
             'email' => 'test@example.com',
         ]);
+
+        $user->name = 'Test User';
+        $user->email_verified_at = now();
+        $user->password = 'password';
+        $user->two_factor_secret = null;
+        $user->two_factor_recovery_codes = null;
+        $user->two_factor_confirmed_at = null;
+        $user->save();
+
+        $this->call(StageOneCatalogueSeeder::class);
     }
 }
