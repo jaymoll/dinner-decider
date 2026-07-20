@@ -12,3 +12,9 @@ Route::livewire('recipes/create', 'pages::recipes.create')->name('recipes.create
 Route::livewire('recipes/archive', 'pages::recipes.archive')->name('recipes.archive');
 Route::livewire('recipes/{recipe}/edit', 'pages::recipes.edit')->name('recipes.edit');
 Route::livewire('recipes/{recipe}', 'pages::recipes.show')->name('recipes.show');
+
+Route::livewire('pantry', 'pages::pantry.index')->name('pantry.index');
+Route::livewire('pantry/create', 'pages::pantry.create')->name('pantry.create');
+Route::livewire('pantry/{pantryEntry}/edit', 'pages::pantry.edit')->name('pantry.edit');
+
+Route::livewire('recommendations', 'pages::recommendations.index')->name('recommendations.index');

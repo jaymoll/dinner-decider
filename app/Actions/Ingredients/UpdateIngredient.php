@@ -55,7 +55,7 @@ final readonly class UpdateIngredient
                     ? $ingredient->packages()->findOrFail($packageData['id'])
                     : $ingredient->packages()->make();
                 $contentUnit = filled($packageData['content_unit'] ?? null) ? UnitCode::from((string) $packageData['content_unit']) : null;
-                $contentAmount = filled($packageData['content_amount'] ?? null) ? (string) $packageData['content_amount'] : null;
+                $contentAmount = filled($packageData['content_amount'] ?? null) ? $this->numeric((string) $packageData['content_amount']) : null;
                 $normalizedContentAmount = null;
 
                 if ($contentAmount !== null && $contentUnit !== null) {
@@ -65,6 +65,17 @@ final readonly class UpdateIngredient
                     $quantity = $this->converter->normalize(new QuantityInput($contentAmount, $contentUnit, $ingredient->id));
                     $contentAmount = $quantity->amount;
                     $normalizedContentAmount = $quantity->normalizedAmount;
+                }
+
+                if ($package->exists && ($package->recipeIngredients()->exists() || $package->pantryEntries()->exists())) {
+                    $oldAmount = $package->content_amount;
+                    $amountChanged = ($oldAmount === null) !== ($contentAmount === null)
+                        || ($oldAmount !== null && $contentAmount !== null && bccomp($oldAmount, $contentAmount, 6) !== 0);
+                    $unitChanged = $package->content_unit?->value !== $contentUnit?->value;
+
+                    if ($amountChanged || $unitChanged) {
+                        throw new InvalidArgumentException('Referenced package contents are immutable. Create a new package definition instead.');
+                    }
                 }
 
                 $package->fill([
@@ -77,7 +88,10 @@ final readonly class UpdateIngredient
                 $retainedPackageIds[] = $package->id;
             }
 
-            $ingredient->packages()->whereNotIn('id', $retainedPackageIds)->doesntHave('recipeIngredients')->delete();
+            $ingredient->packages()->whereNotIn('id', $retainedPackageIds)
+                ->doesntHave('recipeIngredients')
+                ->doesntHave('pantryEntries')
+                ->delete();
 
             return $ingredient->refresh()->load(['aliases', 'packages']);
         });
@@ -86,5 +100,15 @@ final readonly class UpdateIngredient
     private function normalizeName(string $name): string
     {
         return Str::of($name)->trim()->squish()->lower()->toString();
+    }
+
+    /** @return numeric-string */
+    private function numeric(string $value): string
+    {
+        if (! is_numeric($value)) {
+            throw new InvalidArgumentException('Package content must be numeric.');
+        }
+
+        return $value;
     }
 }

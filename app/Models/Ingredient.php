@@ -28,6 +28,7 @@ use Illuminate\Support\Carbon;
  * @property-read User $user
  * @property-read Collection<int, IngredientAlias> $aliases
  * @property-read Collection<int, IngredientPackage> $packages
+ * @property-read Collection<int, PantryEntry> $pantryEntries
  */
 #[Fillable(['user_id', 'name', 'normalized_name', 'category', 'preferred_measurement_group', 'preferred_unit', 'is_staple', 'is_currently_available', 'archived_at'])]
 class Ingredient extends Model
@@ -60,6 +61,12 @@ class Ingredient extends Model
     public function recipeIngredients(): HasMany
     {
         return $this->hasMany(RecipeIngredient::class);
+    }
+
+    /** @return HasMany<PantryEntry, $this> */
+    public function pantryEntries(): HasMany
+    {
+        return $this->hasMany(PantryEntry::class);
     }
 
     /**

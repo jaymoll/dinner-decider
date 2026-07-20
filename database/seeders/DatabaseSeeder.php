@@ -26,5 +26,7 @@ class DatabaseSeeder extends Seeder
         $user->two_factor_recovery_codes = null;
         $user->two_factor_confirmed_at = null;
         $user->save();
+
+        $this->call(StageOneCatalogueSeeder::class);
     }
 }
