@@ -15,6 +15,12 @@
                     <flux:sidebar.item icon="home" :href="route('dashboard')" :current="request()->routeIs('dashboard')" wire:navigate>
                         {{ __('Dashboard') }}
                     </flux:sidebar.item>
+                    <flux:sidebar.item icon="squares-2x2" :href="route('ingredients.index')" :current="request()->routeIs('ingredients.*')" wire:navigate>
+                        {{ __('Ingredients') }}
+                    </flux:sidebar.item>
+                    <flux:sidebar.item icon="book-open" :href="route('recipes.index')" :current="request()->routeIs('recipes.*')" wire:navigate>
+                        {{ __('Recipes') }}
+                    </flux:sidebar.item>
                 </flux:sidebar.group>
             </flux:sidebar.nav>
 

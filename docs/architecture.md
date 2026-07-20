@@ -1,7 +1,9 @@
 # Dinner Decider application architecture
 
-Status: Proposed architecture for the MVP  
-Last reviewed: 2026-07-17  
+Status: Active architecture; Stage 1 implemented
+
+Last reviewed: 2026-07-20
+
 Source of functional scope: Dinner Decider MVP Product Specification.docx  
 Resolved product decisions: Dinner Decider — Remaining MVP Product Decisions
 Target runtime: PHP 8.5, Laravel 13, Livewire 4, Flux UI 2, MySQL 8.4
@@ -39,7 +41,7 @@ The design must make invalid states difficult to create: incompatible units must
 
 ### 2.1 Confirmed repository facts
 
-- The application is an early Laravel starter with no Dinner Decider domain models or tables yet.
+- The application now includes the Stage 1 measurement kernel and user-owned ingredient and recipe catalogue domains; pantry, planning, recommendations, and groceries remain future stages.
 - The runtime is PHP 8.5.8, Laravel 13.20.0, Livewire 4.3.3, Flux UI 2.15.0, and MySQL 8.4.
 - composer.json declares PHP ^8.3. CI supports PHP 8.3/Node 22.12 as the minimum pair and PHP 8.5/Node 24 as the preferred Docker runtime; this architecture does not require PHP 8.5-only syntax.
 - Laravel Sail provides the Docker development environment.
@@ -48,9 +50,9 @@ The design must make invalid states difficult to create: incompatible units must
 - The application uses database-backed sessions and cache. Queues execute synchronously for the MVP; database queue tables are retained, but no application job, worker service, or scheduled task exists.
 - PHPUnit 12, Larastan level 7, and Pint are configured.
 - The existing application layer contains focused Fortify actions and an invokable Logout action.
-- The current database contains only users, authentication, session, cache, and queue infrastructure. Both the application and testing schemas have been migrated.
-- There are currently 56 routes, most supplied by Fortify, Livewire, Flux, and Boost.
-- All product data is still to be introduced, so no legacy domain rewrite is needed.
+- The database includes Stage 1 ingredient, package, alias, recipe, recipe-line, step, category, and tag tables in addition to the starter infrastructure.
+- Authenticated, verified product routes provide ingredient and recipe catalogue management and recipe serving previews.
+- Later-stage product data is still to be introduced, and no legacy domain rewrite is needed.
 
 ### 2.2 Functional scope
 
@@ -92,7 +94,7 @@ Stage 0 resolved the original runtime and configuration inconsistencies. Remaini
 | Composer's post-create hook created an SQLite file. | Resolved: the stale hook was removed and setup uses MySQL. | Keep pure unit tests database-free rather than introducing a second database engine. |
 | The database queue was selected without a worker. | Resolved for the MVP: the default is sync and database queue infrastructure is retained but inactive. | Add a supervised worker and after-commit behavior before the first queued feature. |
 | boost.json has Sail disabled and Codex starts Boost through host PHP while DB_HOST is mysql. | Documentation tools work, but database-aware Boost tools may not reach the Docker network from host PHP. | Reconfigure the MCP command through Sail/Docker when Boost database tools are needed. |
-| The dashboard, logo, welcome screen, repository links, and README are still starter placeholders. | No domain navigation or product language exists yet. | Replace gradually during the feature milestones; this is not an architectural rewrite. |
+| The dashboard, logo, welcome screen, repository links, and README are still starter placeholders. | Stage 1 ingredient and recipe navigation now exists, while the remaining starter surfaces have not been replaced. | Replace gradually during later feature milestones; this is not an architectural rewrite. |
 | The generated welcome view contains a large inline style block and some starter components contain substantial inline Alpine behavior. | This differs from the repository guideline that new JS and CSS should live in dedicated assets or component files. | Do not copy this pattern into product features; migrate only when those views are touched. |
 | Existing tests use RefreshDatabase while repository guidance prefers LazilyRefreshDatabase. | Current tests are valid but may become slower as the schema grows. | Adopt LazilyRefreshDatabase for new domain feature tests and migrate existing tests opportunistically. |
 
@@ -1144,7 +1146,7 @@ If regeneration later becomes expensive, preserve the same pure GroceryCalculato
 
 ## 17. Testing strategy
 
-The test suite uses PHPUnit 12 through Laravel's test runner. After Stage 0 it contains 38 passing starter, authentication, settings, configuration, and health tests with 94 assertions, but no Dinner Decider domain tests because product code has not yet been implemented.
+The test suite uses PHPUnit 12 through Laravel's test runner. Stage 1 adds focused measurement, recipe-scaling, catalogue-action, policy, route, and Livewire tests. The Stage 1-focused verification set contains 47 passing tests with 94 assertions; the pre-existing starter, authentication, settings, configuration, and health tests remain available for full-suite verification.
 
 ### 17.1 Test layers
 
@@ -1411,13 +1413,15 @@ Stage 0 resolved baseline inconsistencies without introducing domain layering.
 
 ### Stage 1 — Measurement, catalogue, and serving scale (Epics 1, 2, and 4)
 
-1. Add measurement enums (including ingredient-specific bulb/count compatibility), Quantity, QuantityInputParser, converter/formatter, and display-policy tests.
-2. Add Ingredient and IngredientPackage migrations/models/policies/factories.
-3. Add Recipe, RecipeIngredient with Required/Optional NonExactStatus, and RecipeStep migrations/models/policies/factories.
-4. Implement minimum required fields, nullable optional metadata/unknown filtering, placeholder/optional secure image handling, create/update/archive actions, and Livewire/Flux catalogue pages.
-5. Add RecipeScaler and a servings preview with exact/non-exact/package acceptance tests.
+Completed on 20 July 2026:
 
-Exit condition: an authenticated user can maintain ingredients/recipes and reliably scale a recipe without pantry concepts.
+1. Added measurement enums (including ingredient-specific semantic-count compatibility), Quantity, QuantityInputParser, converter/formatter, and display-policy tests.
+2. Added Ingredient, IngredientAlias, and IngredientPackage migrations, models, policies, factories, actions, and catalogue screens.
+3. Added Recipe, RecipeIngredient with Required/Optional NonExactStatus, RecipeStep, RecipeCategory, and Tag persistence with policies, factories, and transactional actions.
+4. Implemented required and nullable metadata, category/tag filtering, placeholders, optional validated image storage, create/update/archive/restore flows, and authenticated Livewire/Flux pages.
+5. Added RecipeScaler and a serving preview that always scales from persisted source quantities and preserves non-exact and package context.
+
+Exit condition met: an authenticated, verified user can maintain ingredients and recipes and reliably preview scaled recipes without pantry concepts.
 
 ### Stage 2 — Pantry and recommendations (Epics 3 and 5)
 
@@ -1464,9 +1468,9 @@ Avoid creating every proposed folder up front. A directory appears with its firs
 
 - The application root namespace is App.
 - It runs Laravel 13, PHP 8.5, Livewire 4, Flux UI, Fortify, MySQL 8.4, and a Sail/Docker development environment.
-- Authentication/settings/passkey/2FA starter code exists; no Dinner Decider domain tables or code exist yet.
+- Authentication/settings/passkey/2FA starter code and Stage 1 measurement, ingredient, and recipe catalogue code exist; later Dinner Decider domains are not yet implemented.
 - BCMath and pdo_mysql are installed in the application container.
-- Product data is not yet present in the reviewed development/testing databases.
+- Stage 1 schemas are migrated in the reviewed development/testing database; the optional catalogue seeder is deliberately not part of the default DatabaseSeeder.
 
 ### 24.2 Resolved MVP product decisions
 
