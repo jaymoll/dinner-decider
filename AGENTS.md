@@ -48,7 +48,14 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 
 ## Documentation Files
 
-- You must only create documentation files if explicitly requested by the user.
+- Create documentation whenever it adds meaningful value to the project.
+- Store all project documentation in the docs/ folder.
+- Use Markdown files unless another format is explicitly required.
+- Keep documentation aligned with the current implementation and update it when related functionality, architecture, or decisions change.
+- An existing architecture document in the docs/ folder must not be replaced, deleted, or recreated.
+- Update the existing architecture document in place whenever architectural decisions, structure, dependencies, or major implementation patterns change.
+- Before creating a new documentation file, check whether the subject is already covered by an existing file and update that file instead of creating duplicate documentation.
+- Documentation should explain both what was implemented and why important decisions were made.
 
 ## Replies
 
@@ -100,8 +107,18 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 - Use PHP 8 constructor property promotion: `public function __construct(public GitHub $github) { }`. Do not leave empty zero-parameter `__construct()` methods unless the constructor is private.
 - Use explicit return type declarations and type hints for all method parameters: `function isAccessible(User $user, ?string $path = null): bool`
 - Use TitleCase for Enum keys: `FavoritePerson`, `BestLake`, `Monthly`.
-- Prefer PHPDoc blocks over inline comments. Only add inline comments for exceptionally complex logic.
 - Use array shape type definitions in PHPDoc blocks.
+
+## Code Comments
+
+- Add descriptive comments where they help future developers understand the purpose, reasoning, business rules, assumptions, or non-obvious behaviour of the code.
+- Use inline comments to explain why something is implemented in a particular way, not merely to repeat what the code already states.
+- Add comments around complex calculations, unusual framework behaviour, important edge cases, workarounds, and decisions that may otherwise appear arbitrary.
+- Use PHPDoc blocks for classes, methods, properties, complex parameters, return values, generics, and array shapes where additional type or behavioural information is useful.
+- Keep comments accurate and update or remove them whenever the related code changes.
+- Avoid excessive comments on simple, self-explanatory code. Prefer descriptive class, method, and variable names first, supported by comments where additional context is valuable.
+- Comments should be written clearly enough that a future developer unfamiliar with the feature can understand the intent without having to reconstruct the original reasoning.
+
 
 === deployments rules ===
 
