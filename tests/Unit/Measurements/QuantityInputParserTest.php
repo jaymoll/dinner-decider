@@ -12,7 +12,7 @@ class QuantityInputParserTest extends TestCase
     #[DataProvider('validQuantities')]
     public function test_it_parses_supported_decimal_and_fraction_inputs(string $input, string $expected): void
     {
-        $this->assertSame($expected, new QuantityInputParser()->parse($input));
+        $this->assertSame($expected, (new QuantityInputParser)->parse($input));
     }
 
     /** @return array<string, array{string, string}> */
@@ -34,7 +34,7 @@ class QuantityInputParserTest extends TestCase
     {
         $this->expectException(InvalidArgumentException::class);
 
-        new QuantityInputParser()->parse($input);
+        (new QuantityInputParser)->parse($input);
     }
 
     /** @return array<string, array{string}> */

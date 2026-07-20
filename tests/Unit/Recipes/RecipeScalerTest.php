@@ -26,7 +26,7 @@ class RecipeScalerTest extends TestCase
     {
         $source = $this->converter()->normalize(new QuantityInput('1', ingredientId: 1, ingredientPackageId: 2, packageContentAmount: '400', packageContentUnit: UnitCode::Gram));
 
-        $scaled = new RecipeScaler()->scaleQuantity($source, '3', '4');
+        $scaled = (new RecipeScaler)->scaleQuantity($source, '3', '4');
 
         $this->assertSame('0.75', $scaled->amount);
         $this->assertSame('300', $scaled->normalizedAmount);
@@ -34,7 +34,7 @@ class RecipeScalerTest extends TestCase
 
     public function test_non_exact_requirements_remain_unchanged(): void
     {
-        $scaled = new RecipeScaler()->scale([
+        $scaled = (new RecipeScaler)->scale([
             ['quantity' => null, 'description' => 'Salt to taste'],
         ], '2', '4');
 
@@ -48,7 +48,7 @@ class RecipeScalerTest extends TestCase
 
         $this->expectException(InvalidArgumentException::class);
 
-        new RecipeScaler()->scaleQuantity($source, '0', '4');
+        (new RecipeScaler)->scaleQuantity($source, '0', '4');
     }
 
     private function converter(): UnitConverter
