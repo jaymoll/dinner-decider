@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * @property int $id
@@ -42,5 +43,11 @@ class DinnerPlan extends Model
     public function history(): HasMany
     {
         return $this->dinners()->history()->latest('updated_at');
+    }
+
+    /** @return HasOne<GroceryList, $this> */
+    public function groceryList(): HasOne
+    {
+        return $this->hasOne(GroceryList::class);
     }
 }

@@ -41,6 +41,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property numeric-string|null $reservations_sum_normalized_amount
  * @property-read PlannedDinner $plannedDinner
  * @property-read Collection<int, IngredientReservation> $reservations
+ * @property-read Collection<int, GroceryItemContribution> $groceryContributions
  */
 #[Fillable(['planned_dinner_id', 'ingredient_id', 'ingredient_package_id', 'ingredient_name', 'package_label', 'package_type', 'package_content_amount', 'package_content_unit', 'package_normalized_content_amount', 'quantity_type', 'source_entered_amount', 'source_entered_unit', 'source_normalized_amount', 'scaled_amount', 'compatibility_key', 'quantity_description', 'non_exact_status', 'coverage', 'missing_amount', 'unresolved_at_cooking', 'position'])]
 class PlannedDinnerRequirement extends Model
@@ -70,6 +71,12 @@ class PlannedDinnerRequirement extends Model
     public function reservations(): HasMany
     {
         return $this->hasMany(IngredientReservation::class);
+    }
+
+    /** @return HasMany<GroceryItemContribution, $this> */
+    public function groceryContributions(): HasMany
+    {
+        return $this->hasMany(GroceryItemContribution::class);
     }
 
     /** @return numeric-string */

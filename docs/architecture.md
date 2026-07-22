@@ -1,8 +1,8 @@
 # Dinner Decider application architecture
 
-Status: Active architecture; Stage 1 implemented
+Status: Active architecture; Stages 0–4 implemented
 
-Last reviewed: 2026-07-20
+Last reviewed: 2026-07-21
 
 Source of functional scope: Dinner Decider MVP Product Specification.docx  
 Resolved product decisions: Dinner Decider — Remaining MVP Product Decisions
@@ -41,7 +41,7 @@ The design must make invalid states difficult to create: incompatible units must
 
 ### 2.1 Confirmed repository facts
 
-- The application now includes the Stage 1 measurement kernel and user-owned ingredient and recipe catalogue domains; pantry, planning, recommendations, and groceries remain future stages.
+- The application includes the Stage 1 measurement/catalogue domains, Stage 2 pantry/recommendations, Stage 3 rolling dinner plan and reservations, and the Stage 4 persisted grocery projection.
 - The runtime is PHP 8.5.8, Laravel 13.20.0, Livewire 4.3.3, Flux UI 2.15.0, and MySQL 8.4.
 - composer.json declares PHP ^8.3. CI supports PHP 8.3/Node 22.12 as the minimum pair and PHP 8.5/Node 24 as the preferred Docker runtime; this architecture does not require PHP 8.5-only syntax.
 - Laravel Sail provides the Docker development environment.
@@ -1441,25 +1441,31 @@ Verification evidence on 20 July 2026: the Stage 2 targeted tests pass against M
 
 Exit condition met: pantry totals remain precise and non-negative, current availability is derived centrally, and every active recipe receives a deterministic, explainable pantry-aware ranking.
 
-### Stage 3 — Dinner planning and reservation lifecycle (Epics 6 and 7)
+### Stage 3 — Dinner planning and reservation lifecycle (Epics 6 and 7) (complete)
 
-1. Add singleton rolling DinnerPlan, snapshot-rich PlannedDinner/Requirement, and IngredientReservation schema/models.
-2. Implement PlanDinner plus archive/history-snapshot planning and independent duplication.
-3. Implement servings/date/order changes, cancel, restore, remove, and unresolved-confirmed cook transitions.
-4. Reconcile affected reservations globally by date/list/creation priority after every supply/demand/order change.
-5. Add MySQL concurrency, rollback, restoration, and exactly-once consumption tests.
-6. Build active rolling-list/history UI with Monday-first optional dates and unresolved confirmation feedback.
+Completed on 20 July 2026:
 
-Exit condition: simultaneous planning cannot over-reserve, and cook/cancel transitions preserve pantry invariants.
+1. Added the singleton rolling DinnerPlan, snapshot-rich PlannedDinner/PlannedDinnerRequirement, and IngredientReservation persistence with factories and ownership policies.
+2. Added planning from recipes/history, independent duplication, servings/date/order changes, cancel/restore/remove, and exactly-once cooking with unresolved confirmation snapshots.
+3. Centralized reservation allocation in ReconcilePlanReservations, using the plan as the lock root and full priority ordering after every supply, demand, date, and ordering mutation.
+4. Added the responsive Livewire/Flux rolling-plan and history screen plus MySQL concurrency, rollback, restoration, allocation, and consumption tests.
 
-### Stage 4 — Grocery list (Epic 8)
+Exit condition met: simultaneous planning cannot over-reserve, and cook/cancel transitions preserve pantry invariants.
 
-1. Add GroceryList, GroceryItem, and GroceryItemContribution schema/models.
-2. Implement pure GroceryCalculator and transactional RegenerateGroceryList with package context.
-3. Connect regeneration to every relevant plan/pantry/availability action.
-4. Add temporary generated-quantity edits, manual items, quantity-increase unchecking/notices, completed clearing, contribution explanations, and no-history/idempotency tests.
+### Stage 4 — Grocery list (Epic 8) (complete)
 
-Exit condition: generated shortfalls remain synchronized without overwriting manual items or shopping state.
+Completed on 21 July 2026:
+
+1. Added one GroceryList per rolling plan, generated/manual GroceryItem rows, explanatory GroceryItemContribution rows, ownership policies, factories, uniqueness constraints, and category/checked indexes.
+2. Added the pure GroceryCalculator with immutable input/result objects, BCMath aggregation, versioned canonical keys, exact mass/volume and semantic-count behavior, known/unknown package handling, and Required non-exact checklist generation.
+3. Added transactional RegenerateGroceryList at the single reconciliation exit point. It locks and replaces the complete generated projection, preserves manual items, replaces contributions, clears temporary overrides, preserves checks on equal/decreased quantities, and unchecks plus records increases.
+4. Corrected Required non-exact coverage so only an available staple or positive pantry presence covers it; Optional non-exact rows remain informational. Grocery categories use the nine specification aisles plus `Other`, with unmatched ingredient categories mapped to `Other`.
+5. Added authorized manual add/edit/remove, generated-quantity override, check toggle, and completed-clearing actions, plus a reusable Livewire form and responsive category-grouped Flux checklist with contribution and change explanations.
+6. Updated cooking confirmation so a current generated shortfall is resolved by a checked contribution while pantry consumption remains reservation-only; checking groceries never adds pantry stock.
+
+Verification evidence on 21 July 2026: 33 focused grocery, dinner-plan (including MySQL concurrency), pantry, and product-route tests pass with 125 assertions; Laravel Pint and Larastan pass; the Vite production build succeeds in Sail.
+
+Exit condition met: generated shortfalls stay synchronized without overwriting manual items, and temporary shopping state follows the documented reset rules.
 
 ### Stage 5 — MVP hardening and release
 
@@ -1477,7 +1483,7 @@ Avoid creating every proposed folder up front. A directory appears with its firs
 
 - The application root namespace is App.
 - It runs Laravel 13, PHP 8.5, Livewire 4, Flux UI, Fortify, MySQL 8.4, and a Sail/Docker development environment.
-- Authentication/settings/passkey/2FA starter code plus Stage 1 measurement/catalogue/recipe functionality and Stage 2 pantry/recommendation functionality exist; dinner planning, reservations, and groceries remain unimplemented.
+- Authentication/settings/passkey/2FA starter code and Stages 1–4 exist, including measurement/catalogue/recipes, pantry/recommendations, rolling dinner planning/reservations, and the synchronized grocery checklist.
 - BCMath and pdo_mysql are installed in the application container.
 - Stage 1 and Stage 2 schemas are migrated in the reviewed MySQL testing database; the default DatabaseSeeder creates a known test account and an idempotent demo catalogue covering ingredient, package, pantry, recipe, archive, and recommendation states.
 

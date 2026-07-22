@@ -35,14 +35,16 @@ final readonly class MarkDinnerCooked
 
             $this->reconcile->handle($plan);
             $requirements = PlannedDinnerRequirement::query()->whereBelongsTo($lockedDinner)
-                ->with('reservations')->orderBy('position')->lockForUpdate()->get();
+                ->with(['reservations', 'groceryContributions.groceryItem'])->orderBy('position')->lockForUpdate()->get();
             $unresolved = $requirements
                 ->filter(fn (PlannedDinnerRequirement $requirement): bool => in_array($requirement->coverage, [
                     RequirementCoverage::Partial,
                     RequirementCoverage::Missing,
                     RequirementCoverage::Incompatible,
                     RequirementCoverage::Unavailable,
-                ], true))
+                ], true) && ! $requirement->groceryContributions->contains(
+                    fn ($contribution): bool => $contribution->groceryItem->checked_at !== null,
+                ))
                 ->map(fn (PlannedDinnerRequirement $requirement): array => [
                     'requirement_id' => $requirement->id,
                     'ingredient' => $requirement->ingredient_name,

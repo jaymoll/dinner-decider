@@ -29,7 +29,6 @@ final readonly class ChangePlannedDinnerDate
 
             $lockedDinner->update(['planned_date' => $date]);
             $this->reconcile->handle($plan);
-            $this->reconcile->handle($plan);
 
             return $lockedDinner->refresh();
         }, attempts: 3);

@@ -2,6 +2,7 @@
 
 namespace App\Actions\DinnerPlans;
 
+use App\Actions\Groceries\RegenerateGroceryList;
 use App\Enums\NonExactStatus;
 use App\Enums\QuantityType;
 use App\Enums\RequirementCoverage;
@@ -17,7 +18,10 @@ use Illuminate\Support\Facades\DB;
 
 final readonly class ReconcilePlanReservations
 {
-    public function __construct(private PantryAllocator $allocator) {}
+    public function __construct(
+        private PantryAllocator $allocator,
+        private RegenerateGroceryList $regenerateGroceryList,
+    ) {}
 
     /** @param list<int>|null $ingredientIds */
     public function handle(DinnerPlan $dinnerPlan, ?array $ingredientIds = null): void
@@ -53,6 +57,8 @@ final readonly class ReconcilePlanReservations
                     $this->reconcileRequirement($requirement, $ingredients, $entries, $available);
                 }
             }
+
+            $this->regenerateGroceryList->handle($lockedPlan);
         }, attempts: 3);
     }
 
@@ -66,8 +72,12 @@ final readonly class ReconcilePlanReservations
         $ingredient = $ingredients->get($requirement->ingredient_id);
 
         if ($requirement->quantity_type === QuantityType::NonExact) {
-            $unavailable = $requirement->non_exact_status === NonExactStatus::Required
-                && ($ingredient === null || ! $ingredient->is_currently_available);
+            $hasPositivePantryPresence = $entries
+                ->where('ingredient_id', $requirement->ingredient_id)
+                ->contains(fn (PantryEntry $entry): bool => bccomp($entry->total_normalized_amount, '0', $this->scale()) > 0);
+            $isCovered = $ingredient !== null && $ingredient->is_currently_available
+                && ($ingredient->is_staple || $hasPositivePantryPresence);
+            $unavailable = $requirement->non_exact_status === NonExactStatus::Required && ! $isCovered;
             $requirement->update([
                 'coverage' => $unavailable ? RequirementCoverage::Unavailable : RequirementCoverage::NonExact,
                 'missing_amount' => null,

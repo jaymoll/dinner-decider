@@ -19,3 +19,4 @@ Route::livewire('pantry/{pantryEntry}/edit', 'pages::pantry.edit')->name('pantry
 
 Route::livewire('recommendations', 'pages::recommendations.index')->name('recommendations.index');
 Route::livewire('dinner-plan', 'pages::dinner-plans.index')->name('dinner-plans.index');
+Route::livewire('groceries', 'pages::groceries.index')->name('groceries.index');

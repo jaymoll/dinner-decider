@@ -30,6 +30,9 @@
                     <flux:sidebar.item icon="calendar-days" :href="route('dinner-plans.index')" :current="request()->routeIs('dinner-plans.*')" wire:navigate>
                         {{ __('Dinner plan') }}
                     </flux:sidebar.item>
+                    <flux:sidebar.item icon="shopping-cart" :href="route('groceries.index')" :current="request()->routeIs('groceries.*')" wire:navigate>
+                        {{ __('Groceries') }}
+                    </flux:sidebar.item>
                 </flux:sidebar.group>
             </flux:sidebar.nav>
 
