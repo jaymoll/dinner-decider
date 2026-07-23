@@ -113,6 +113,8 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 
 - Add descriptive comments where they help future developers understand the purpose, reasoning, business rules, assumptions, or non-obvious behaviour of the code.
 - Use inline comments to explain why something is implemented in a particular way, not merely to repeat what the code already states.
+- Add concise intent comments to complex or hard-to-understand functions, checks, transformations, and workflows when names and structure alone do not make the reasoning clear.
+- When a condition combines two or more non-obvious business questions, add a short comment that states the combined decision and why those questions must be evaluated together. Do not merely translate the Boolean operators into prose.
 - Add comments around complex calculations, unusual framework behaviour, important edge cases, workarounds, and decisions that may otherwise appear arbitrary.
 - Use PHPDoc blocks for classes, methods, properties, complex parameters, return values, generics, and array shapes where additional type or behavioural information is useful.
 - Keep comments accurate and update or remove them whenever the related code changes.

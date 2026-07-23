@@ -54,6 +54,7 @@ final readonly class MarkDinnerCooked
                 ])->values()->all();
             $fingerprint = hash('sha256', (string) json_encode($unresolved, JSON_THROW_ON_ERROR));
 
+            // Require confirmation only for shortages, and only when it approves this freshly reconciled shortage state.
             if ($unresolved !== [] && ! hash_equals($fingerprint, (string) $confirmationFingerprint)) {
                 return new CookResult(
                     cooked: false,
