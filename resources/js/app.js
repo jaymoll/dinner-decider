@@ -17,6 +17,8 @@ document.addEventListener('alpine:init', () => {
         },
 
         get days() {
+            // Render a fixed six-week, Monday-first grid so focus positions do not move when the
+            // visible month begins or ends mid-week.
             const mondayOffset = (this.month.getDay() + 6) % 7
             const first = new Date(this.month.getFullYear(), this.month.getMonth(), 1 - mondayOffset)
             const today = this.isoDate(new Date())
@@ -81,6 +83,7 @@ document.addEventListener('alpine:init', () => {
         },
 
         handleGridKeydown(event) {
+            // Arrow keys follow the ARIA grid pattern; Home and End stay within the active week.
             const movement = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[event.key]
             if (movement !== undefined) {
                 event.preventDefault()
@@ -97,6 +100,8 @@ document.addEventListener('alpine:init', () => {
 
         moveFocus(offset) {
             const currentIndex = Math.max(0, this.days.findIndex((day) => day.iso === this.activeIso))
+
+            // Clamp navigation to the rendered grid rather than silently changing the month.
             const targetIndex = Math.max(0, Math.min(41, currentIndex + offset))
             this.activeIso = this.days[targetIndex].iso
             this.$nextTick(() => this.focusActiveDay())
@@ -109,6 +114,7 @@ document.addEventListener('alpine:init', () => {
         },
 
         isoDate(date) {
+            // Build the date from local fields; toISOString() could shift the selected calendar day.
             return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
         },
     }))

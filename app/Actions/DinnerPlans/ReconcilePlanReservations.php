@@ -16,6 +16,9 @@ use App\Services\DinnerPlans\PantryAllocator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 
+/**
+ * Rebuilds reservation and grocery projections from the current plan in one locked transaction.
+ */
 final readonly class ReconcilePlanReservations
 {
     public function __construct(
@@ -27,6 +30,8 @@ final readonly class ReconcilePlanReservations
     public function handle(DinnerPlan $dinnerPlan, ?array $ingredientIds = null): void
     {
         DB::transaction(function () use ($dinnerPlan, $ingredientIds): void {
+            // The singleton plan is the lock root for every supply-and-demand mutation. Child rows
+            // are then locked in stable priority order to prevent competing over-allocation.
             $lockedPlan = DinnerPlan::query()->lockForUpdate()->findOrFail($dinnerPlan->id);
             $dinners = PlannedDinner::query()->whereBelongsTo($lockedPlan)->active()->priorityOrder()->lockForUpdate()->get();
             $requirements = PlannedDinnerRequirement::query()
@@ -36,12 +41,16 @@ final readonly class ReconcilePlanReservations
 
             $affectedIngredientIds = $requirements->pluck('ingredient_id')->filter()->map(fn ($id): int => (int) $id)->unique()->sort()->values();
             if ($ingredientIds !== null) {
+                // Explicit IDs also cover stock removal when no current requirement references the
+                // ingredient and therefore the requirement query cannot discover it.
                 $affectedIngredientIds = $affectedIngredientIds->merge($ingredientIds)->map(fn ($id): int => (int) $id)->unique()->sort()->values();
             }
 
             $entries = PantryEntry::query()->where('user_id', $lockedPlan->user_id)
                 ->whereIn('ingredient_id', $affectedIngredientIds)->oldest('id')->lockForUpdate()->get();
 
+            // Reservations are derived state. Delete the affected projection before replaying the
+            // complete dinner priority order against a single running availability balance.
             IngredientReservation::query()
                 ->whereHas('requirement', fn ($query) => $query
                     ->whereHas('plannedDinner', fn ($query) => $query->where('dinner_plan_id', $lockedPlan->id))
@@ -75,6 +84,8 @@ final readonly class ReconcilePlanReservations
             $hasPositivePantryPresence = $entries
                 ->where('ingredient_id', $requirement->ingredient_id)
                 ->contains(fn (PantryEntry $entry): bool => bccomp($entry->total_normalized_amount, '0', $this->scale()) > 0);
+            // A required non-exact line is covered only by an available staple or real positive
+            // presence; descriptive pantry rows with zero stock must not suppress a grocery need.
             $isCovered = $ingredient !== null && $ingredient->is_currently_available
                 && ($ingredient->is_staple || $hasPositivePantryPresence);
             $unavailable = $requirement->non_exact_status === NonExactStatus::Required && ! $isCovered;
@@ -101,6 +112,8 @@ final readonly class ReconcilePlanReservations
 
         $ingredientEntries = $entries->where('ingredient_id', $requirement->ingredient_id);
         $compatibleEntries = $ingredientEntries->where('compatibility_key', $requirement->compatibility_key);
+        // The allocator sees only compatible rows and separately marks the original package so it
+        // can preserve native context before consuming interchangeable metric stock.
         $candidates = array_values($compatibleEntries->map(fn (PantryEntry $entry): array => [
             'id' => $entry->id,
             'available_amount' => $available[$entry->id],

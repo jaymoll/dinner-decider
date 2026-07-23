@@ -74,6 +74,7 @@ class RecipeForm extends Form
         $this->source_url = $recipe->source_url ?? '';
         $this->categoryNames = $recipe->categories->pluck('name')->implode(', ');
         $this->tagNames = $recipe->tags->pluck('name')->implode(', ');
+        // Ephemeral keys give Livewire stable row identity while users reorder unsaved children.
         $this->ingredients = $recipe->ingredients->map(fn (RecipeIngredient $line): array => [
             'key' => (string) Str::uuid(),
             'ingredient_id' => $line->ingredient_id,
@@ -137,6 +138,8 @@ class RecipeForm extends Form
             'tags.*' => ['string', 'max:80'],
         ]);
 
+        // Row semantics depend on multiple fields and ownership, so they are checked only after
+        // the structural rules have established a safe payload shape.
         $validator->after(function (ValidationValidator $validator) use ($user): void {
             $this->validateIngredientRows($validator, $user);
         });
@@ -199,6 +202,8 @@ class RecipeForm extends Form
                 continue;
             }
 
+            // Existing archived ingredients remain editable for historical continuity, but users
+            // cannot add a different archived catalogue item to the recipe.
             $isExistingRecipeIngredient = $this->recipeId !== null
                 && $ingredient->recipeIngredients()->where('recipe_id', $this->recipeId)->exists();
             if ($ingredient->archived_at !== null && ! $isExistingRecipeIngredient) {
@@ -236,6 +241,7 @@ class RecipeForm extends Form
      */
     private function moveByKey(array $rows, string $key, int $position): array
     {
+        // Move by stable UI key rather than array index because Livewire reindexes removed rows.
         $current = collect($rows)->search(fn (array $row): bool => $row['key'] === $key);
         if ($current === false) {
             return $rows;

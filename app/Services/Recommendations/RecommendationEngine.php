@@ -13,6 +13,9 @@ use App\Services\Measurements\UnitConverter;
 use App\Services\Recipes\RecipeScaler;
 use App\ValueObjects\Quantity;
 
+/**
+ * Scores one recipe against a pantry snapshot while preventing stock from being counted twice.
+ */
 final readonly class RecommendationEngine
 {
     public function __construct(
@@ -24,6 +27,9 @@ final readonly class RecommendationEngine
     public function score(Recipe $recipe, PantryAvailability $pantry, ?string $servings = null): RecommendationResult
     {
         $selectedServings = $servings ?? (string) $recipe->default_servings;
+
+        // This mutable copy is consumed line by line so repeated recipe requirements compete for
+        // the same pantry stock instead of each receiving the bucket's original full amount.
         /** @var array<string, numeric-string> $remaining */
         $remaining = $pantry->buckets->mapWithKeys(fn ($bucket): array => [$bucket->key() => $bucket->availableAmount])->all();
         $matches = [];
@@ -82,11 +88,15 @@ final readonly class RecommendationEngine
                 fn (string $amount, string $bucketKey): bool => str_starts_with($bucketKey, $ingredient->id.'|')
                     && bccomp($amount, '0', $this->scale()) > 0,
             );
+
+            // Stock for the ingredient is only useful when its compatibility key matches; keeping
+            // this distinct from "missing" explains semantic-count and package mismatches.
             $status = $hasIncompatibleStock ? 'incompatible' : 'missing';
             $counts[$status]++;
             $matches[] = $this->exactMatch($requirement, $quantity, $status, '0', $quantity->normalizedAmount);
         }
 
+        // Non-exact lines are explanatory only and never dilute the quantity-based score.
         $quantityCoverage = $exactCount === 0 ? '0' : bcdiv($coverageSum, (string) $exactCount, $this->scale());
         $score = $exactCount === 0 ? '0' : $this->calculateScore($quantityCoverage, $counts, $exactCount);
 
@@ -140,6 +150,8 @@ final readonly class RecommendationEngine
     private function nonExactMatch(RecipeIngredient $requirement, PantryAvailability $pantry): IngredientMatch
     {
         $ingredient = $requirement->ingredient;
+
+        // Presence is useful UI context for non-exact lines, but remains excluded from scoring.
         $hasStock = $ingredient->is_currently_available && $pantry->buckets->contains(
             fn ($bucket): bool => $bucket->ingredientId === $ingredient->id
                 && ($bucket->unlimited || bccomp($bucket->availableAmount, '0', $this->scale()) > 0),
@@ -169,6 +181,7 @@ final readonly class RecommendationEngine
             $score = bcadd($score, bcmul($this->weight($factor), $proportion, $this->scale()), $this->scale());
         }
 
+        // Clamp the configurable weighted formula so tuning cannot escape the UI's score range.
         $minimum = $this->configuredDecimal('recommendations.minimum_score');
         $maximum = $this->configuredDecimal('recommendations.maximum_score');
         $score = bccomp($score, $minimum, $this->scale()) < 0

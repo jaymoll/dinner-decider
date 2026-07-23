@@ -12,6 +12,9 @@ use App\Enums\RequirementCoverage;
 use App\Enums\UnitCode;
 use Illuminate\Support\Str;
 
+/**
+ * Converts requirement shortfalls into deterministic generated grocery rows and contributions.
+ */
 final class GroceryCalculator
 {
     public function __construct(private readonly int $calculationScale = 6) {}
@@ -47,6 +50,8 @@ final class GroceryCalculator
             }
 
             if ($groups[$key]['package_id'] !== $requirement->ingredientPackageId) {
+                // A canonical metric group may combine multiple package definitions; once it does,
+                // no single package label can truthfully describe the generated row.
                 $groups[$key]['package_id'] = null;
                 $groups[$key]['package_label'] = null;
             }
@@ -64,6 +69,7 @@ final class GroceryCalculator
             }
         }
 
+        // Hash ordering makes regeneration stable regardless of input query or collection order.
         ksort($groups, SORT_STRING);
 
         return array_map(
@@ -87,6 +93,8 @@ final class GroceryCalculator
     private function canonicalGroup(GroceryRequirementData $requirement): ?string
     {
         if ($requirement->quantityType === QuantityType::Exact) {
+            // Exact lines generate groceries only for a positive shortfall with a safe aggregation
+            // key; complete or malformed requirements must not create zero-value checklist rows.
             if ($requirement->compatibilityKey === null || $requirement->missingAmount === null
                 || bccomp($requirement->missingAmount, '0', $this->scale()) <= 0) {
                 return null;
@@ -95,6 +103,7 @@ final class GroceryCalculator
             return "exact|{$requirement->ingredientId}|{$requirement->compatibilityKey}";
         }
 
+        // Optional non-exact lines are informational, and covered required lines need no purchase.
         if ($requirement->nonExactStatus !== NonExactStatus::Required
             || $requirement->coverage !== RequirementCoverage::Unavailable) {
             return null;

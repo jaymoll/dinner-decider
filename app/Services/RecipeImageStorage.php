@@ -7,6 +7,9 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
 
+/**
+ * Stores only verified recipe image content under application-managed public-disk paths.
+ */
 final readonly class RecipeImageStorage
 {
     private const DIRECTORY = 'recipe-images';
@@ -28,6 +31,7 @@ final readonly class RecipeImageStorage
             throw new RuntimeException('The recipe image upload did not complete successfully.');
         }
 
+        // Inspect decoded image metadata instead of trusting the client filename or MIME header.
         $contents = file_get_contents($image->getRealPath());
         $details = $contents === false ? false : @getimagesizefromstring($contents);
 
@@ -35,6 +39,7 @@ final readonly class RecipeImageStorage
             throw new RuntimeException('The recipe image must contain a valid JPEG, PNG, or WebP image.');
         }
 
+        // Check both transport metadata and actual bytes because either value may be unreliable.
         $maximumBytes = (int) config('measurements.limits.recipe_image_kilobytes') * 1024;
         if (($image->getSize() ?: strlen($contents)) > $maximumBytes || strlen($contents) > $maximumBytes) {
             throw new RuntimeException('The recipe image exceeds the maximum allowed size.');
@@ -55,6 +60,7 @@ final readonly class RecipeImageStorage
 
     public function delete(?string $path): void
     {
+        // The prefix guard prevents callers from turning recipe cleanup into arbitrary disk deletion.
         if ($path !== null && str_starts_with($path, self::DIRECTORY.'/')) {
             Storage::disk('public')->delete($path);
         }

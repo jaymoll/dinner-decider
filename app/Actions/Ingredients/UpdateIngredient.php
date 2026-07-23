@@ -73,6 +73,8 @@ final readonly class UpdateIngredient
                         || ($oldAmount !== null && $contentAmount !== null && bccomp($oldAmount, $contentAmount, 6) !== 0);
                     $unitChanged = $package->content_unit?->value !== $contentUnit?->value;
 
+                    // Referenced package content is part of normalized historical truth; changing
+                    // either half would silently reinterpret existing recipe and pantry amounts.
                     if ($amountChanged || $unitChanged) {
                         throw new InvalidArgumentException('Referenced package contents are immutable. Create a new package definition instead.');
                     }
@@ -88,6 +90,8 @@ final readonly class UpdateIngredient
                 $retainedPackageIds[] = $package->id;
             }
 
+            // Omitted referenced packages remain available to old data; only unused definitions
+            // are safe to remove during form synchronization.
             $ingredient->packages()->whereNotIn('id', $retainedPackageIds)
                 ->doesntHave('recipeIngredients')
                 ->doesntHave('pantryEntries')

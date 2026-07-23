@@ -4,6 +4,9 @@ namespace App\Services\DinnerPlans;
 
 use App\Data\DinnerPlans\Allocation;
 
+/**
+ * Allocates compatible pantry rows deterministically, preferring the requirement's native package.
+ */
 final class PantryAllocator
 {
     /**
@@ -13,6 +16,8 @@ final class PantryAllocator
      */
     public function allocate(string $requiredAmount, array $entries): array
     {
+        // Native-package rows preserve the most useful display context; IDs break all remaining
+        // ties so concurrent reconciliations acquire and consume stock in the same order.
         usort($entries, fn (array $left, array $right): int => [$right['native'], $left['id']] <=> [$left['native'], $right['id']]);
 
         $remaining = $requiredAmount;

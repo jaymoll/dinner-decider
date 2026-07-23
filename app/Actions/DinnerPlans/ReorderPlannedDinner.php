@@ -35,6 +35,8 @@ final readonly class ReorderPlannedDinner
                 }
             }
 
+            // Dinner position is part of allocation priority, so ordering changes can move scarce
+            // stock between requirements even when total supply and demand are unchanged.
             $this->reconcile->handle($plan);
 
             return $lockedDinner->refresh();

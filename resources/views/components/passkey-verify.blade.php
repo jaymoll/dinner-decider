@@ -35,6 +35,7 @@
                 });
                 Livewire.navigate(response.redirect || '/dashboard');
             } catch (e) {
+                // Do not present cancellation of the browser ceremony as a failed credential.
                 if (e.constructor?.name !== 'UserCancelledError') {
                     this.error = e.message;
                 }

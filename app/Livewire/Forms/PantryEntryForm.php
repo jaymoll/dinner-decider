@@ -50,6 +50,8 @@ class PantryEntryForm extends Form
 
             $hasPackage = $this->ingredient_package_id !== null;
             $hasUnit = filled($this->unit);
+
+            // Package count and direct-unit amount are mutually exclusive representations.
             if ($hasPackage === $hasUnit) {
                 $validator->errors()->add('unit', 'Choose either a direct unit or a package definition.');
 
@@ -77,6 +79,7 @@ class PantryEntryForm extends Form
     {
         $package = $entry->ingredientPackage;
         if ($package !== null && $package->hasKnownContents()) {
+            // Stored totals are normalized; edit forms must recover the original package count.
             return bcdiv($entry->total_normalized_amount, (string) $package->normalized_content_amount, 6);
         }
 

@@ -28,6 +28,8 @@ final readonly class ChangePlannedDinnerServings
             $lockedDinner = PlannedDinner::query()->whereBelongsTo($plan)->lockForUpdate()->findOrFail($dinner->id);
             $this->assertPlanned($lockedDinner);
 
+            // Always scale from snapshotted source quantities; repeatedly scaling the current
+            // amount would accumulate rounding drift.
             foreach ($lockedDinner->requirements()->lockForUpdate()->get() as $requirement) {
                 $scaled = $this->snapshotter->scaledAmount($requirement, $servings, $lockedDinner->source_servings);
                 $requirement->update(['scaled_amount' => $scaled, 'missing_amount' => $scaled]);

@@ -19,6 +19,9 @@ use App\Models\Recipe;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 
+/**
+ * Builds idempotent action-derived planning and grocery states for the local demo account.
+ */
 class StageThreeDinnerPlanSeeder extends Seeder
 {
     public function run(): void
@@ -35,6 +38,7 @@ class StageThreeDinnerPlanSeeder extends Seeder
         ];
 
         foreach ($definitions as [$recipeName, $date]) {
+            // Recipe name plus existing dinner state makes repeated local seeding non-destructive.
             if ($plan->dinners()->where('recipe_name', $recipeName)->exists()) {
                 continue;
             }
@@ -58,6 +62,7 @@ class StageThreeDinnerPlanSeeder extends Seeder
             $dinner = app(PlanDinner::class)->handle($user, $recipe, '2', now()->subDays(2)->format('Y-m-d'));
             $result = app(MarkDinnerCooked::class)->handle($user, $dinner);
             if ($result->requiresConfirmation) {
+                // Exercise the same two-step confirmation path as the UI to create realistic history.
                 app(MarkDinnerCooked::class)->handle($user, $dinner, $result->fingerprint);
             }
         }

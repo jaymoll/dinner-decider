@@ -32,11 +32,13 @@ final readonly class UpdateRecipe
                 return $this->saveRecipeDetails->handle($recipe, $data);
             });
         } catch (Throwable $throwable) {
+            // Keep the previous image intact and remove only the uncommitted replacement.
             $this->recipeImageStorage->delete($newImagePath);
 
             throw $throwable;
         }
 
+        // Delete the old image only after the database points safely at its replacement or null.
         if ($previousImagePath !== null && $previousImagePath !== $imagePath) {
             $this->recipeImageStorage->delete($previousImagePath);
         }

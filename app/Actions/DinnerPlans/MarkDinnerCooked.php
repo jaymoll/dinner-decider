@@ -15,6 +15,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use InvalidArgumentException;
 
+/**
+ * Consumes exactly the reserved pantry stock and records unresolved cooking-time requirements.
+ */
 final readonly class MarkDinnerCooked
 {
     public function __construct(private ReconcilePlanReservations $reconcile) {}
@@ -33,6 +36,8 @@ final readonly class MarkDinnerCooked
                 throw new InvalidArgumentException('Restore a cancelled dinner before cooking it.');
             }
 
+            // Reconcile inside the same lock boundary so confirmation is based on current stock,
+            // current dinner priority, and the latest generated grocery state.
             $this->reconcile->handle($plan);
             $requirements = PlannedDinnerRequirement::query()->whereBelongsTo($lockedDinner)
                 ->with(['reservations', 'groceryContributions.groceryItem'])->orderBy('position')->lockForUpdate()->get();
@@ -43,6 +48,8 @@ final readonly class MarkDinnerCooked
                     RequirementCoverage::Incompatible,
                     RequirementCoverage::Unavailable,
                 ], true) && ! $requirement->groceryContributions->contains(
+                    // Checked groceries acknowledge the shortfall for cooking; they never create
+                    // pantry stock, so consumption below remains limited to reservations.
                     fn ($contribution): bool => $contribution->groceryItem->checked_at !== null,
                 ))
                 ->map(fn (PlannedDinnerRequirement $requirement): array => [
@@ -64,6 +71,7 @@ final readonly class MarkDinnerCooked
                 );
             }
 
+            // Lock reservations and pantry rows in deterministic ID order before deducting totals.
             $reservations = IngredientReservation::query()
                 ->whereIn('planned_dinner_requirement_id', $requirements->modelKeys())
                 ->oldest('pantry_entry_id')->oldest('id')->lockForUpdate()->get();
@@ -84,6 +92,9 @@ final readonly class MarkDinnerCooked
 
             foreach ($requirements as $requirement) {
                 $details = collect($unresolved)->firstWhere('requirement_id', $requirement->id);
+
+                // Persist the accepted shortage on the historical snapshot before reconciliation
+                // removes the cooked dinner from active demand.
                 $requirement->update(['unresolved_at_cooking' => $details]);
             }
             $reservations->each->delete();

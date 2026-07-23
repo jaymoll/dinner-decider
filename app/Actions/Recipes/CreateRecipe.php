@@ -35,6 +35,8 @@ final readonly class CreateRecipe
                 return $this->saveRecipeDetails->handle($recipe, $data);
             });
         } catch (Throwable $throwable) {
+            // Filesystem writes are not covered by the database transaction, so roll them back
+            // explicitly when any aggregate persistence step fails.
             $this->recipeImageStorage->delete($imagePath);
 
             throw $throwable;

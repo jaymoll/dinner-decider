@@ -48,6 +48,8 @@ new #[Title('Security settings')] class extends Component {
         $this->canManageTwoFactor = Features::canManageTwoFactorAuthentication();
 
         if ($this->canManageTwoFactor) {
+            // When confirmation is required, an interrupted setup must not leave an unconfirmed
+            // secret behaving as an enabled second factor.
             if (Fortify::confirmsTwoFactorAuthentication() && is_null(auth()->user()->two_factor_confirmed_at)) {
                 $disableTwoFactorAuthentication(auth()->user());
             }
@@ -94,6 +96,8 @@ new #[Title('Security settings')] class extends Component {
     public function loadPasskeys(): void
     {
         $this->passkeys = auth()->user()->passkeys()
+            // The encrypted credential is selected only because Fortify's authenticator accessor
+            // derives its display label from that record; it is never exposed in the mapped state.
             ->select(['id', 'name', 'credential', 'created_at', 'last_used_at'])
             ->latest()
             ->get()
@@ -112,6 +116,7 @@ new #[Title('Security settings')] class extends Component {
      */
     public function confirmDelete(int $passkeyId): void
     {
+        // Scope every client-supplied ID through the authenticated relationship to prevent IDOR.
         $passkey = auth()->user()->passkeys()->findOrFail($passkeyId);
 
         $this->deletingPasskeyId = $passkey->id;

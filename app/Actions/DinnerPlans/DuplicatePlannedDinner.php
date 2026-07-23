@@ -12,6 +12,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use InvalidArgumentException;
 
+/**
+ * Creates an independent planned copy from a historical or active dinner snapshot.
+ */
 final readonly class DuplicatePlannedDinner
 {
     public function __construct(private RequirementSnapshotter $snapshotter, private ReconcilePlanReservations $reconcile) {}
@@ -37,6 +40,8 @@ final readonly class DuplicatePlannedDinner
             $dinner->save();
 
             foreach ($requirements as $requirement) {
+                // Coverage, shortages, and cooking notes are derived occurrence state and must not
+                // leak into the new dinner even though its immutable source snapshot is reused.
                 $copy = $requirement->replicate(['coverage', 'missing_amount', 'unresolved_at_cooking', 'created_at', 'updated_at']);
                 $scaledAmount = $this->snapshotter->scaledAmount($requirement, $servings, $lockedSource->source_servings);
                 $copy->forceFill([

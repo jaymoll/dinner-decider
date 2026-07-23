@@ -18,6 +18,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('security.edit');
 });
 
+// Browsers discover these destinations before authentication, while each destination still enforces
+// its own verified, password-confirmed middleware.
 Route::get('.well-known/passkey-endpoints', function () {
     return response()->json([
         'enroll' => route('security.edit'),

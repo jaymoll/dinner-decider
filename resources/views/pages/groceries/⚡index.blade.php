@@ -36,6 +36,9 @@ new #[Title('Groceries')] class extends Component {
         Gate::authorize('viewAny', GroceryList::class);
         $plan = $ensureDinnerPlan->handle($this->user());
         $this->list = $ensureGroceryList->handle($plan);
+
+        // Reconciliation normally maintains this projection; first access repairs a legacy or empty
+        // list without regenerating on every component mount.
         if ($this->list->regenerated_at === null) {
             $regenerate->handle($plan);
             $this->list->refresh();
@@ -117,6 +120,8 @@ new #[Title('Groceries')] class extends Component {
 
     public function displayQuantity(GroceryItem $item): string
     {
+        // A temporary override affects presentation only; calculated truth remains available for the
+        // next regeneration and for contribution explanations.
         $amount = $item->is_manually_adjusted ? $item->override_amount : $item->calculated_amount;
         $unit = $item->is_manually_adjusted ? $item->override_unit : $item->calculated_unit;
         if ($amount !== null) {

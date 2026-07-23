@@ -30,6 +30,9 @@ final readonly class UpdatePantryEntry
             $lockedEntry = PantryEntry::query()->lockForUpdate()->findOrFail($pantryEntry->id);
             $lockedEntry->loadMissing(['ingredient', 'ingredientPackage']);
             $package = $lockedEntry->ingredientPackage;
+
+            // Reapply the row's original display representation so edits cannot change its merge
+            // identity or accidentally reinterpret a package count as a direct unit.
             $quantity = $this->converter->normalize(new QuantityInput(
                 amount: $amount,
                 unit: $package === null ? $lockedEntry->display_unit : null,

@@ -24,6 +24,8 @@ final readonly class RemovePantryEntry
         DB::transaction(function () use ($plan, $pantryEntry, $confirmed): void {
             $lockedPlan = DinnerPlan::query()->lockForUpdate()->findOrFail($plan->id);
             $lockedEntry = PantryEntry::query()->with('reservations.requirement.plannedDinner')->lockForUpdate()->findOrFail($pantryEntry->id);
+
+            // Surface the dinners that will lose reservations before making a destructive change.
             if ($lockedEntry->reservations->isNotEmpty() && ! $confirmed) {
                 throw new PantryEntryRemovalRequiresConfirmation($lockedEntry->reservations->map(fn (IngredientReservation $reservation): array => [
                     'dinner' => $reservation->requirement->plannedDinner->recipe_name,

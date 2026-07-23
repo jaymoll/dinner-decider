@@ -24,6 +24,7 @@ new #[Title('Recommendations')] class extends Component {
     public string $appliedServings = '';
     private GetPantryAwareRecommendations $recommendationsQuery;
 
+    // Livewire does not serialize private service dependencies between requests, so boot restores it.
     public function boot(GetPantryAwareRecommendations $recommendationsQuery): void { $this->recommendationsQuery = $recommendationsQuery; }
     public function mount(): void { Gate::authorize('viewAny', Recipe::class); $this->appliedServings = $this->servings; }
 

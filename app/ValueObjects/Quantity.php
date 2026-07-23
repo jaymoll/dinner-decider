@@ -6,6 +6,9 @@ use App\Enums\MeasurementGroup;
 use App\Enums\UnitCode;
 use InvalidArgumentException;
 
+/**
+ * Holds a positive entered amount together with its exact normalized allocation amount.
+ */
 final readonly class Quantity
 {
     /** @var numeric-string */
@@ -76,6 +79,8 @@ final readonly class Quantity
         $this->assertCompatible($other);
 
         if ($this->unit === null && $this->ingredientPackageId !== $other->ingredientPackageId) {
+            // Compatible known packages may have different sizes, so their sum is represented in
+            // the shared base unit instead of pretending it is a count of either package.
             return $this->inBaseUnit(bcadd($this->normalizedAmount, $other->normalizedAmount, self::scale()));
         }
 
@@ -95,6 +100,7 @@ final readonly class Quantity
         }
 
         if ($this->unit === null && $this->ingredientPackageId !== $other->ingredientPackageId) {
+            // Once package definitions differ, only the normalized base amount remains meaningful.
             return $this->inBaseUnit($normalizedAmount);
         }
 

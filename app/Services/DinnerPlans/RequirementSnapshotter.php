@@ -10,6 +10,9 @@ use App\Models\RecipeIngredient;
 use App\Services\Measurements\UnitConverter;
 use App\Services\Recipes\RecipeScaler;
 
+/**
+ * Freezes recipe requirements so planned dinner history survives later catalogue changes.
+ */
 final readonly class RequirementSnapshotter
 {
     public function __construct(private UnitConverter $converter, private RecipeScaler $scaler) {}
@@ -38,6 +41,8 @@ final readonly class RequirementSnapshotter
             $scaledAmount = $this->scaler->scaleQuantity($quantity, $servings, $sourceServings)->normalizedAmount;
         }
 
+        // Copy both presentation context and normalized source truth; future serving changes must
+        // scale this immutable snapshot rather than whatever the recipe contains at that time.
         return [
             'ingredient_id' => $line->ingredient_id,
             'ingredient_package_id' => $line->ingredient_package_id,
@@ -72,6 +77,7 @@ final readonly class RequirementSnapshotter
             return null;
         }
 
+        // Reconstruct from snapshotted package content so package edits cannot rewrite history.
         $quantity = $requirement->ingredient_package_id === null
             ? $this->converter->normalize(new QuantityInput(
                 (string) $requirement->source_entered_amount,

@@ -99,6 +99,7 @@ new #[Title('Dinner plan')] class extends Component {
     {
         $result = $cook->handle($this->user(), $this->ownedDinner($id));
         if ($result->requiresConfirmation) {
+            // The fingerprint binds this modal to the freshly reconciled shortage set.
             $this->pendingCookDinnerId = $id;
             $this->cookFingerprint = $result->fingerprint;
             $this->unresolved = $result->unresolved;
@@ -113,6 +114,8 @@ new #[Title('Dinner plan')] class extends Component {
         abort_if($this->pendingCookDinnerId === null || $this->cookFingerprint === null, 422);
         $result = $cook->handle($this->user(), $this->ownedDinner($this->pendingCookDinnerId), $this->cookFingerprint);
         if ($result->requiresConfirmation) {
+            // Supply or plan state changed while the modal was open; require the user to review the
+            // replacement shortage set instead of accepting a stale confirmation.
             $this->cookFingerprint = $result->fingerprint;
             $this->unresolved = $result->unresolved;
             return;
@@ -156,6 +159,7 @@ new #[Title('Dinner plan')] class extends Component {
 
     private function refreshPlan(string $message): void
     {
+        // Computed values are request-memoized, so mutations must invalidate both active and history.
         unset($this->activeDinners, $this->history);
         $this->refreshInputs();
         Flux::toast(variant: 'success', text: $message);

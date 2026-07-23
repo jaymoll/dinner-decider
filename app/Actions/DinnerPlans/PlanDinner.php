@@ -13,6 +13,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use InvalidArgumentException;
 
+/**
+ * Appends an immutable recipe snapshot to the rolling plan and reconciles its pantry demand.
+ */
 final readonly class PlanDinner
 {
     public function __construct(
@@ -52,6 +55,8 @@ final readonly class PlanDinner
             $lockedRecipe->load(['ingredients.ingredient', 'ingredients.ingredientPackage', 'steps', 'categories', 'tags']);
             $position = ((int) PlannedDinner::query()->whereBelongsTo($lockedPlan)->active()->max('position')) + 1;
 
+            // Denormalized recipe fields intentionally preserve history if the source is edited,
+            // archived, or eventually deleted.
             $dinner = PlannedDinner::query()->create([
                 'dinner_plan_id' => $lockedPlan->id,
                 'recipe_id' => $lockedRecipe->id,

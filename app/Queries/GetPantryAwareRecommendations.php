@@ -9,6 +9,9 @@ use App\Services\Recommendations\RecommendationEngine;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Str;
 
+/**
+ * Produces a globally ranked, deterministic page of pantry-aware recipe results.
+ */
 final readonly class GetPantryAwareRecommendations
 {
     public function __construct(
@@ -23,6 +26,9 @@ final readonly class GetPantryAwareRecommendations
     public function get(User $user, ?string $servings = null, ?int $perPage = null, int $page = 1): LengthAwarePaginator
     {
         $pantry = $this->availablePantry->get($user);
+
+        // Score and sort the full owned catalogue before slicing so every page reflects the same
+        // global ranking rather than a database page ranked in isolation.
         $results = Recipe::query()->whereBelongsTo($user)->active()
             ->with(['ingredients.ingredient', 'ingredients.ingredientPackage'])
             ->get()
@@ -47,6 +53,7 @@ final readonly class GetPantryAwareRecommendations
             return $scoreComparison;
         }
 
+        // Equal scores prefer fewer severe gaps, then stable human and database identifiers.
         foreach (['incompatibleCount', 'missingCount', 'partialCount'] as $count) {
             $comparison = $left->{$count} <=> $right->{$count};
             if ($comparison !== 0) {

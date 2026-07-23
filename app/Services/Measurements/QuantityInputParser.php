@@ -5,6 +5,9 @@ namespace App\Services\Measurements;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 
+/**
+ * Converts supported human quantity formats into canonical decimal strings without using floats.
+ */
 final class QuantityInputParser
 {
     /** @var array<string, numeric-string> */
@@ -34,6 +37,9 @@ final class QuantityInputParser
         }
 
         $value = str_replace(',', '.', $value);
+
+        // Try the most structured formats first so a supported fraction never falls through to
+        // the generic decimal error and all arithmetic stays within BCMath precision.
         $parsed = $this->parseUnicodeFraction($value)
             ?? $this->parseMixedFraction($value)
             ?? $this->parseSimpleFraction($value)

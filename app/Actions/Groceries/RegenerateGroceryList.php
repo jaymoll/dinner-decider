@@ -14,6 +14,9 @@ use App\Models\PlannedDinnerRequirement;
 use App\Services\Groceries\GroceryCalculator;
 use Illuminate\Support\Facades\DB;
 
+/**
+ * Replaces the generated grocery projection while preserving manual items and safe check state.
+ */
 final readonly class RegenerateGroceryList
 {
     public function __construct(
@@ -58,6 +61,8 @@ final readonly class RegenerateGroceryList
                 $activeKeys[] = $result->generationKey;
                 $item = $existing->get($result->generationKey);
                 $oldAmount = $item?->calculated_amount;
+                // Only a real increase invalidates a previous check; equal or reduced needs retain
+                // the user's completed-shopping state.
                 $didIncrease = $item !== null && $oldAmount !== null && $result->calculatedAmount !== null
                     && bccomp($result->calculatedAmount, $oldAmount, $this->scale()) > 0;
                 $hadOverride = (bool) $item?->is_manually_adjusted;
@@ -98,6 +103,7 @@ final readonly class RegenerateGroceryList
                     $clearedOverrides[] = $item->id;
                 }
 
+                // Contributions are a full projection of the current plan, not historical rows.
                 GroceryItemContribution::query()->whereBelongsTo($item)->delete();
                 foreach ($result->contributions as $contribution) {
                     GroceryItemContribution::query()->create([
@@ -108,6 +114,7 @@ final readonly class RegenerateGroceryList
                 }
             }
 
+            // Remove obsolete generated rows only; manual checklist items have an independent life.
             GroceryItem::query()->whereBelongsTo($list)->where('source', GroceryItemSource::Generated)
                 ->when($activeKeys !== [], fn ($query) => $query->whereNotIn('generation_key', $activeKeys))
                 ->when($activeKeys === [], fn ($query) => $query)

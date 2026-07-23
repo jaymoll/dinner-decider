@@ -11,6 +11,9 @@ use App\Models\User;
 use App\Services\Measurements\QuantityFormatter;
 use App\ValueObjects\CompatibilityKey;
 
+/**
+ * Builds the authoritative available-stock view from totals, reservations, and staple policy.
+ */
 final class AvailablePantry
 {
     public function __construct(private readonly QuantityFormatter $formatter) {}
@@ -27,6 +30,8 @@ final class AvailablePantry
 
         $balances = $entries->map(function (PantryEntry $entry): PantryBalance {
             $reserved = $this->reservedAmount($entry);
+
+            // Temporary unavailability masks stock from decisions without destroying its balance.
             $available = $entry->ingredient->is_currently_available
                 ? bcsub($entry->total_normalized_amount, $reserved, $this->scale())
                 : '0';
@@ -42,6 +47,8 @@ final class AvailablePantry
             );
         });
 
+        // Allocation and recommendation consumers operate on compatibility buckets, not on the
+        // package or display-unit rows that happen to hold the stock.
         $bucketAmounts = [];
         foreach ($balances as $balance) {
             $key = $balance->entry->ingredient_id.'|'.$balance->entry->compatibility_key;
@@ -60,6 +67,7 @@ final class AvailablePantry
             ->where('is_staple', true)->where('is_currently_available', true)
             ->get(['id', 'preferred_unit'])
             ->each(function (Ingredient $ingredient) use ($buckets): void {
+                // An available staple is represented as an unlimited bucket even with no entry.
                 $compatibilityKey = (string) CompatibilityKey::forUnit($ingredient->preferred_unit, $ingredient->id);
                 $bucket = new PantryBucket($ingredient->id, $compatibilityKey, '0', true);
                 $buckets->put($bucket->key(), $bucket);
@@ -88,6 +96,7 @@ final class AvailablePantry
         }
 
         if ($package !== null && $includePackageContext) {
+            // Known packages retain their shopping context while also exposing the metric truth.
             $count = bcdiv($amount, (string) $package->normalized_content_amount, $this->scale());
 
             return $this->formatter->formatAmount($count, true).' × '.$package->label.' — '.$this->metricDisplay($entry, $amount).' total';

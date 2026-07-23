@@ -15,6 +15,7 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        // The known demo credentials are intentionally forbidden in production.
         if (app()->isProduction()) {
             return;
         }

@@ -35,6 +35,7 @@ new class extends Component {
 
         if ($user->hasEnabledTwoFactorAuthentication() && $user->two_factor_recovery_codes) {
             try {
+                // Decrypt only into locked server-owned state and reveal it behind an explicit UI action.
                 $this->recoveryCodes = json_decode(decrypt($user->two_factor_recovery_codes), true);
             } catch (Exception) {
                 $this->addError('recoveryCodes', 'Failed to load recovery codes');
