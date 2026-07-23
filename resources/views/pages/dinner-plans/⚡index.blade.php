@@ -63,6 +63,20 @@ new #[Title('Dinner plan')] class extends Component {
         $this->refreshPlan('Dinner order updated.');
     }
 
+    public function moveUp(int $id, ReorderPlannedDinner $reorder): void
+    {
+        $dinner = $this->ownedDinner($id);
+        $reorder->handle($this->user(), $dinner, $dinner->position - 1);
+        $this->refreshPlan('Dinner moved up.');
+    }
+
+    public function moveDown(int $id, ReorderPlannedDinner $reorder): void
+    {
+        $dinner = $this->ownedDinner($id);
+        $reorder->handle($this->user(), $dinner, $dinner->position + 1);
+        $this->refreshPlan('Dinner moved down.');
+    }
+
     public function duplicate(int $id, DuplicatePlannedDinner $duplicate): void
     {
         $duplicate->handle($this->user(), $this->ownedDinner($id));
@@ -172,14 +186,14 @@ new #[Title('Dinner plan')] class extends Component {
     <div class="space-y-4" wire:sort="sortDinner">
         @forelse ($this->activeDinners as $dinner)
             <flux:card wire:key="planned-dinner-{{ $dinner->id }}" wire:sort:item="{{ $dinner->id }}" class="space-y-5">
-                <div class="flex items-start gap-3">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-start">
                     <button type="button" wire:sort:handle class="mt-1 cursor-grab text-zinc-400" aria-label="Reorder {{ $dinner->recipe_name }}">&#8942;&#8942;</button>
                     <div class="min-w-0 flex-1"><flux:heading size="lg">{{ $dinner->recipe_name }}</flux:heading><flux:text>{{ $dinner->planned_date?->format('d-m-Y') ?? 'No date' }}</flux:text></div>
-                    <div wire:sort:ignore class="flex flex-wrap justify-end gap-2"><flux:button wire:click="duplicate({{ $dinner->id }})" size="sm" variant="ghost">Duplicate</flux:button><flux:button wire:click="cancel({{ $dinner->id }})" size="sm" variant="ghost">Cancel</flux:button><flux:button wire:click="remove({{ $dinner->id }})" wire:confirm="Permanently remove this planned dinner?" size="sm" variant="ghost">Remove</flux:button><flux:button wire:click="cook({{ $dinner->id }})" size="sm" variant="primary">Cook</flux:button></div>
+                    <div wire:sort:ignore class="flex flex-wrap gap-2 sm:justify-end"><flux:button wire:click="moveUp({{ $dinner->id }})" wire:loading.attr="disabled" size="sm" variant="ghost" icon="arrow-up" aria-label="Move {{ $dinner->recipe_name }} up" :disabled="$loop->first">Move up</flux:button><flux:button wire:click="moveDown({{ $dinner->id }})" wire:loading.attr="disabled" size="sm" variant="ghost" icon="arrow-down" aria-label="Move {{ $dinner->recipe_name }} down" :disabled="$loop->last">Move down</flux:button><flux:button wire:click="duplicate({{ $dinner->id }})" wire:loading.attr="disabled" size="sm" variant="ghost">Duplicate</flux:button><flux:button wire:click="cancel({{ $dinner->id }})" wire:loading.attr="disabled" size="sm" variant="ghost">Cancel</flux:button><flux:button wire:click="remove({{ $dinner->id }})" wire:loading.attr="disabled" wire:confirm="Permanently remove this planned dinner?" size="sm" variant="ghost">Remove</flux:button><flux:button wire:click="cook({{ $dinner->id }})" wire:loading.attr="disabled" size="sm" variant="primary">Cook</flux:button></div>
                 </div>
                 <div wire:sort:ignore class="grid gap-3 sm:grid-cols-2">
-                    <form wire:submit="updateServings({{ $dinner->id }})" class="flex items-end gap-2"><flux:input wire:model="servings.{{ $dinner->id }}" label="Servings" inputmode="decimal" /><flux:button type="submit">Update</flux:button></form>
-                    <form wire:submit="updateDate({{ $dinner->id }})" class="space-y-2"><flux:label>Date</flux:label><div class="flex items-center gap-2"><div class="flex-1"><x-dinner-date-picker model="dates.{{ $dinner->id }}" /></div><flux:button type="submit">Update</flux:button></div></form>
+                    <form wire:submit="updateServings({{ $dinner->id }})" class="flex flex-col gap-2 min-[375px]:flex-row min-[375px]:items-end"><flux:input wire:model="servings.{{ $dinner->id }}" label="Servings" inputmode="decimal" /><flux:button type="submit" wire:loading.attr="disabled">Update</flux:button></form>
+                    <form wire:submit="updateDate({{ $dinner->id }})" class="space-y-2"><flux:label>Date</flux:label><div class="flex flex-col gap-2 min-[375px]:flex-row min-[375px]:items-center"><div class="min-w-0 flex-1"><x-dinner-date-picker model="dates.{{ $dinner->id }}" /></div><flux:button type="submit" wire:loading.attr="disabled">Update</flux:button></div></form>
                 </div>
                 <div class="divide-y divide-zinc-200 dark:divide-zinc-700">
                     @foreach ($dinner->requirements as $requirement)
@@ -205,7 +219,7 @@ new #[Title('Dinner plan')] class extends Component {
         {{ $this->history->links() }}
     </div>
 
-    <flux:modal name="confirm-cooking" class="min-w-[24rem]">
-        <div class="space-y-5"><div><flux:heading size="lg">Cook with unresolved requirements?</flux:heading><flux:text class="mt-2">Only reserved stock will be deducted. These unresolved items will be recorded in dinner history.</flux:text></div><div class="space-y-2">@foreach ($unresolved as $item)<div wire:key="unresolved-{{ $item['requirement_id'] }}" class="rounded-lg border border-zinc-200 p-3 dark:border-zinc-700"><span class="font-medium">{{ $item['ingredient'] }}</span><div class="text-sm text-zinc-500">{{ str($item['coverage'])->headline() }}@if ($item['missing_amount'] !== null) · missing {{ $item['missing_amount'] }}@endif</div></div>@endforeach</div><div class="flex justify-end gap-2"><flux:modal.close><flux:button variant="ghost">Go back</flux:button></flux:modal.close><flux:button wire:click="confirmCooking" variant="danger">Cook anyway</flux:button></div></div>
+    <flux:modal name="confirm-cooking" class="w-full max-w-md">
+        <div class="space-y-5"><div><flux:heading size="lg">Cook with unresolved requirements?</flux:heading><flux:text class="mt-2">Only reserved stock will be deducted. These unresolved items will be recorded in dinner history.</flux:text></div><div class="space-y-2">@foreach ($unresolved as $item)<div wire:key="unresolved-{{ $item['requirement_id'] }}" class="rounded-lg border border-zinc-200 p-3 dark:border-zinc-700"><span class="font-medium">{{ $item['ingredient'] }}</span><div class="text-sm text-zinc-500">{{ str($item['coverage'])->headline() }}@if ($item['missing_amount'] !== null) · missing {{ $item['missing_amount'] }}@endif</div></div>@endforeach</div><div class="flex flex-col-reverse gap-2 min-[375px]:flex-row min-[375px]:justify-end"><flux:modal.close><flux:button variant="ghost">Go back</flux:button></flux:modal.close><flux:button wire:click="confirmCooking" wire:loading.attr="disabled" variant="danger">Cook anyway</flux:button></div></div>
     </flux:modal>
 </section>

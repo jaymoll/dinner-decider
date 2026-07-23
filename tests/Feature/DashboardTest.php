@@ -22,7 +22,16 @@ class DashboardTest extends TestCase
         $this->actingAs($user);
 
         $response = $this->get(route('dashboard'));
-        $response->assertOk();
+        $response
+            ->assertOk()
+            ->assertSee('Choose dinner with what you have')
+            ->assertSee(route('ingredients.index'))
+            ->assertSee(route('recipes.index'))
+            ->assertSee(route('pantry.index'))
+            ->assertSee(route('recommendations.index'))
+            ->assertSee(route('dinner-plans.index'))
+            ->assertSee(route('groceries.index'))
+            ->assertDontSee('livewire-starter-kit');
     }
 
     public function test_unverified_users_are_redirected_to_the_email_verification_notice(): void

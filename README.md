@@ -85,4 +85,4 @@ docker compose exec -T laravel.test composer audit --locked --no-interaction
 docker compose exec -T laravel.test npm audit --audit-level=high
 ```
 
-See `docs/architecture.md` for the application architecture and incremental implementation stages.
+See [the architecture](docs/architecture.md), [MVP release checklist](docs/mvp-release-checklist.md), and [operations runbook](docs/operations-runbook.md). Detailed production deployment, backup, restore, and rollback procedures live in the runbook rather than this development setup guide.

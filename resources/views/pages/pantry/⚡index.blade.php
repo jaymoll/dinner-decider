@@ -90,6 +90,7 @@ new #[Title('Pantry')] class extends Component {
     </div>
     @if (session('status')) <flux:callout variant="success">{{ session('status') }}</flux:callout> @endif
     <flux:card class="overflow-hidden p-0!">
+        <div role="region" aria-label="Pantry stock table" tabindex="0" class="overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 dark:focus-visible:outline-white">
         <flux:table :paginate="$this->balances">
             <flux:table.columns><flux:table.column>Ingredient</flux:table.column><flux:table.column>Total</flux:table.column><flux:table.column>Reserved</flux:table.column><flux:table.column>Available</flux:table.column><flux:table.column>Status</flux:table.column><flux:table.column></flux:table.column></flux:table.columns>
             <flux:table.rows>
@@ -107,6 +108,7 @@ new #[Title('Pantry')] class extends Component {
                 @endforelse
             </flux:table.rows>
         </flux:table>
+        </div>
     </flux:card>
-    <flux:modal name="confirm-pantry-removal" class="min-w-[24rem]"><div class="space-y-5"><div><flux:heading size="lg">Remove reserved pantry stock?</flux:heading><flux:text class="mt-2">These dinner reservations will be released and reallocated to remaining compatible stock.</flux:text></div><div class="space-y-2">@foreach ($pendingRemovalReservations as $reservation)<div wire:key="pending-removal-{{ $loop->index }}" class="rounded-lg border border-zinc-200 p-3 text-sm dark:border-zinc-700">{{ $reservation['dinner'] }} · {{ $reservation['date'] ? \Carbon\CarbonImmutable::parse($reservation['date'])->format('d-m-Y') : 'No date' }} · {{ $reservation['amount'] }}</div>@endforeach</div><div class="flex justify-end gap-2"><flux:modal.close><flux:button variant="ghost">Keep stock</flux:button></flux:modal.close><flux:button wire:click="confirmRemoval" variant="danger">Remove and reallocate</flux:button></div></div></flux:modal>
+    <flux:modal name="confirm-pantry-removal" class="w-full max-w-md"><div class="space-y-5"><div><flux:heading size="lg">Remove reserved pantry stock?</flux:heading><flux:text class="mt-2">These dinner reservations will be released and reallocated to remaining compatible stock.</flux:text></div><div class="space-y-2">@foreach ($pendingRemovalReservations as $reservation)<div wire:key="pending-removal-{{ $loop->index }}" class="rounded-lg border border-zinc-200 p-3 text-sm dark:border-zinc-700">{{ $reservation['dinner'] }} · {{ $reservation['date'] ? \Carbon\CarbonImmutable::parse($reservation['date'])->format('d-m-Y') : 'No date' }} · {{ $reservation['amount'] }}</div>@endforeach</div><div class="flex flex-col-reverse gap-2 min-[375px]:flex-row min-[375px]:justify-end"><flux:modal.close><flux:button variant="ghost">Keep stock</flux:button></flux:modal.close><flux:button wire:click="confirmRemoval" wire:loading.attr="disabled" variant="danger">Remove and reallocate</flux:button></div></div></flux:modal>
 </section>

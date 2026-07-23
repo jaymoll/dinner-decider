@@ -115,7 +115,11 @@ class RecipeForm extends Form
             'meal_type' => ['nullable', 'string', 'max:80'],
             'notes' => ['nullable', 'string', 'max:10000'],
             'source_url' => ['nullable', 'url:http,https', 'max:2048'],
-            'image' => ['nullable', File::image()->types(['jpg', 'jpeg', 'png', 'webp'])->max((int) config('measurements.limits.recipe_image_kilobytes'))],
+            'image' => ['nullable', File::image()->types(['jpg', 'jpeg', 'png', 'webp'])
+                ->max((int) config('measurements.limits.recipe_image_kilobytes'))
+                ->dimensions(Rule::dimensions()
+                    ->maxWidth((int) config('measurements.limits.recipe_image_dimension_pixels'))
+                    ->maxHeight((int) config('measurements.limits.recipe_image_dimension_pixels')))],
             'remove_image' => ['boolean'],
             'ingredients' => ['required', 'array', 'min:1', 'max:'.config('measurements.limits.ingredients_per_recipe')],
             'ingredients.*.ingredient_id' => ['required', 'integer', Rule::exists(Ingredient::class, 'id')->where('user_id', $user->id)],

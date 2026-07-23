@@ -2,9 +2,19 @@
 
 namespace Database\Seeders;
 
+use App\Actions\DinnerPlans\CancelDinner;
 use App\Actions\DinnerPlans\EnsureDinnerPlan;
+use App\Actions\DinnerPlans\MarkDinnerCooked;
 use App\Actions\DinnerPlans\PlanDinner;
 use App\Actions\DinnerPlans\ReconcilePlanReservations;
+use App\Actions\Groceries\AddManualGroceryItem;
+use App\Actions\Groceries\EditGeneratedGroceryQuantity;
+use App\Actions\Groceries\EnsureGroceryList;
+use App\Actions\Groceries\ToggleGroceryItemChecked;
+use App\Enums\GroceryCategory;
+use App\Enums\GroceryItemSource;
+use App\Enums\PlannedDinnerStatus;
+use App\Models\GroceryItem;
 use App\Models\Recipe;
 use App\Models\User;
 use Illuminate\Database\Seeder;
@@ -36,5 +46,45 @@ class StageThreeDinnerPlanSeeder extends Seeder
         }
 
         app(ReconcilePlanReservations::class)->handle($plan);
+
+        if (! $plan->dinners()->where('recipe_name', 'Butter Toast')->where('status', PlannedDinnerStatus::Cancelled)->exists()) {
+            $recipe = Recipe::query()->whereBelongsTo($user)->where('name', 'Butter Toast')->sole();
+            $dinner = app(PlanDinner::class)->handle($user, $recipe, '1', now()->subDay()->format('Y-m-d'));
+            app(CancelDinner::class)->handle($user, $dinner);
+        }
+
+        if (! $plan->dinners()->where('recipe_name', 'Spinach Omelette')->where('status', PlannedDinnerStatus::Cooked)->exists()) {
+            $recipe = Recipe::query()->whereBelongsTo($user)->where('name', 'Spinach Omelette')->sole();
+            $dinner = app(PlanDinner::class)->handle($user, $recipe, '2', now()->subDays(2)->format('Y-m-d'));
+            $result = app(MarkDinnerCooked::class)->handle($user, $dinner);
+            if ($result->requiresConfirmation) {
+                app(MarkDinnerCooked::class)->handle($user, $dinner, $result->fingerprint);
+            }
+        }
+
+        $list = app(EnsureGroceryList::class)->handle($plan);
+        if (! $list->items()->where('source', GroceryItemSource::Manual)->where('name', 'Paper towels')->exists()) {
+            app(AddManualGroceryItem::class)->handle($user, $list, [
+                'name' => 'Paper towels',
+                'quantity_description' => '1 roll',
+                'category' => GroceryCategory::Household->value,
+            ]);
+        }
+
+        $generatedItems = GroceryItem::query()->whereBelongsTo($list)->where('source', GroceryItemSource::Generated)->oldest('id')->get();
+        $checkedItem = $generatedItems->first();
+        if ($checkedItem !== null && $checkedItem->checked_at === null) {
+            app(ToggleGroceryItemChecked::class)->handle($user, $checkedItem);
+        }
+
+        $adjustedItem = $generatedItems->first(fn (GroceryItem $item): bool => $item->calculated_amount !== null && ! $item->is_manually_adjusted);
+        if ($adjustedItem !== null) {
+            app(EditGeneratedGroceryQuantity::class)->handle(
+                $user,
+                $adjustedItem,
+                bcadd($adjustedItem->calculated_amount, '1', (int) config('measurements.calculation_scale')),
+                $adjustedItem->calculated_unit,
+            );
+        }
     }
 }

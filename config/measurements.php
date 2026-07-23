@@ -21,5 +21,6 @@ return [
         'categories_per_recipe' => 20,
         'tags_per_recipe' => 30,
         'recipe_image_kilobytes' => 4096,
+        'recipe_image_dimension_pixels' => 6000,
     ],
 ];

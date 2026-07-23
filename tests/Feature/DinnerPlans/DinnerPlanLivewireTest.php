@@ -51,4 +51,40 @@ class DinnerPlanLivewireTest extends TestCase
         $this->assertSame(1, $second->refresh()->position);
         $this->assertSame(2, $first->refresh()->position);
     }
+
+    public function test_keyboard_accessible_move_controls_reorder_dinners(): void
+    {
+        $user = User::factory()->create();
+        $ingredient = Ingredient::factory()->for($user)->create();
+        $recipe = Recipe::factory()->for($user)->create(['name' => 'Accessible dinner']);
+        RecipeIngredient::factory()->for($recipe)->for($ingredient)->create();
+        $first = app(PlanDinner::class)->handle($user, $recipe, '4');
+        $second = app(PlanDinner::class)->handle($user, $recipe, '4');
+
+        Livewire::actingAs($user)
+            ->test('pages::dinner-plans.index')
+            ->assertSee('Move Accessible dinner up')
+            ->assertSee('Move Accessible dinner down')
+            ->call('moveUp', $second->id)
+            ->assertHasNoErrors();
+
+        $this->assertSame(1, $second->refresh()->position);
+        $this->assertSame(2, $first->refresh()->position);
+    }
+
+    public function test_date_picker_exposes_dialog_grid_and_date_state_semantics(): void
+    {
+        $user = User::factory()->create();
+        $ingredient = Ingredient::factory()->for($user)->create();
+        $recipe = Recipe::factory()->for($user)->create();
+        RecipeIngredient::factory()->for($recipe)->for($ingredient)->create();
+        app(PlanDinner::class)->handle($user, $recipe, '4');
+
+        Livewire::actingAs($user)
+            ->test('pages::dinner-plans.index')
+            ->assertSeeHtml('aria-haspopup="dialog"')
+            ->assertSeeHtml('role="grid"')
+            ->assertSeeHtml(':aria-selected=')
+            ->assertSeeHtml(':aria-current=');
+    }
 }

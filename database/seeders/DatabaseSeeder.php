@@ -15,6 +15,10 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        if (app()->isProduction()) {
+            return;
+        }
+
         $user = User::query()->firstOrNew([
             'email' => 'test@example.com',
         ]);

@@ -1,8 +1,8 @@
 # Dinner Decider application architecture
 
-Status: Active architecture; Stages 0–4 implemented
+Status: Stages 0–5 implemented; MVP release candidate with open release gates
 
-Last reviewed: 2026-07-21
+Last reviewed: 2026-07-22
 
 Source of functional scope: Dinner Decider MVP Product Specification.docx  
 Resolved product decisions: Dinner Decider — Remaining MVP Product Decisions
@@ -50,9 +50,9 @@ The design must make invalid states difficult to create: incompatible units must
 - The application uses database-backed sessions and cache. Queues execute synchronously for the MVP; database queue tables are retained, but no application job, worker service, or scheduled task exists.
 - PHPUnit 12, Larastan level 7, and Pint are configured.
 - The existing application layer contains focused Fortify actions and an invokable Logout action.
-- The database includes Stage 1 ingredient, package, alias, recipe, recipe-line, step, category, and tag tables in addition to the starter infrastructure.
-- Authenticated, verified product routes provide ingredient and recipe catalogue management and recipe serving previews.
-- Later-stage product data is still to be introduced, and no legacy domain rewrite is needed.
+- The database includes Stage 1–4 ingredient, recipe, pantry, rolling dinner-plan, reservation, grocery-list, grocery-item, and grocery-contribution schemas in addition to the authentication infrastructure.
+- Authenticated, verified product routes cover all six product areas: ingredients, recipes, pantry, recommendations, dinner plan, and groceries.
+- Stage 5 adds release hardening, a realistic action-derived demo fixture, shared recipe-image storage security, bounded read-path tests, and operational documentation without redesigning the schema or queue model.
 
 ### 2.2 Functional scope
 
@@ -94,7 +94,7 @@ Stage 0 resolved the original runtime and configuration inconsistencies. Remaini
 | Composer's post-create hook created an SQLite file. | Resolved: the stale hook was removed and setup uses MySQL. | Keep pure unit tests database-free rather than introducing a second database engine. |
 | The database queue was selected without a worker. | Resolved for the MVP: the default is sync and database queue infrastructure is retained but inactive. | Add a supervised worker and after-commit behavior before the first queued feature. |
 | boost.json has Sail disabled and Codex starts Boost through host PHP while DB_HOST is mysql. | Documentation tools work, but database-aware Boost tools may not reach the Docker network from host PHP. | Reconfigure the MCP command through Sail/Docker when Boost database tools are needed. |
-| The dashboard, logo, welcome screen, repository links, and README are still starter placeholders. | Stage 1 ingredient and recipe navigation now exists, while the remaining starter surfaces have not been replaced. | Replace gradually during later feature milestones; this is not an architectural rewrite. |
+| The dashboard and product navigation began as starter placeholders. | Resolved for authenticated product surfaces: the dashboard is a query-free launchpad and starter repository/documentation links are removed. The public welcome/logo remain cosmetic follow-up work. | Do not couple cosmetic public-page work to domain architecture. |
 | The generated welcome view contains a large inline style block and some starter components contain substantial inline Alpine behavior. | This differs from the repository guideline that new JS and CSS should live in dedicated assets or component files. | Do not copy this pattern into product features; migrate only when those views are touched. |
 | Existing tests use RefreshDatabase while repository guidance prefers LazilyRefreshDatabase. | Current tests are valid but may become slower as the schema grows. | Adopt LazilyRefreshDatabase for new domain feature tests and migrate existing tests opportunistically. |
 
@@ -1189,7 +1189,7 @@ New database tests should use LazilyRefreshDatabase as required by AGENTS.md. Ex
 - Add a regression test before correcting any discovered production bug.
 - Keep query-count or eager-loading regression tests around the recommendation and grocery screens once realistic fixtures exist.
 
-CI should run formatting/static checks selected by the team, unit/feature tests, and a MySQL integration job. The current workflow's PHP/Node versions and missing MySQL service must be resolved before it can be treated as reliable evidence; see sections 2 and 19.
+CI runs formatting/static checks, unit/feature tests, and MySQL 8.4 integration across the supported PHP/Node matrix. Query ceilings cover recommendations and the pantry, dinner-plan, and grocery read paths; response-time samples remain observational because wall-clock CI assertions are unstable.
 
 ## 18. Scalability and future expansion
 
@@ -1469,11 +1469,16 @@ Exit condition met: generated shortfalls stay synchronized without overwriting m
 
 ### Stage 5 — MVP hardening and release
 
-- Run accessibility, responsive, security, and end-to-end flow reviews.
-- Seed a realistic Dutch metric dataset and establish query/response baselines.
-- Verify optional secure image upload/removal and the standard no-image placeholder; do not add advanced transformations/retention.
-- Create deployment/backup/restore/worker runbooks.
-- Verify every resolved product decision in section 24 through acceptance tests and an MVP walkthrough.
+Completed on 22 July 2026:
+
+1. Replaced the starter dashboard with a query-free six-area launchpad, removed starter navigation links, removed self-service account deletion, and completed authenticated/verified grocery-route coverage.
+2. Expanded the idempotent demo fixture to 34 ingredients, 10 package definitions, 10 active recipes plus one archived recipe, and action-derived planned/cooked/cancelled/manual/checked/adjusted states. Production refuses to create the known demo account.
+3. Added `RecipeImageStorage`, which validates successful uploads, parsed JPEG/PNG/WebP content, byte and dimension limits, generates managed filenames, and centralizes rollback/replacement/removal cleanup. Security re-encoding is deferred until GD is approved as a required platform extension.
+4. Added a connected `MvpJourneyTest`, focused image tests, route/lifecycle tests, accessible non-drag ordering controls, date-picker dialog/grid keyboard semantics, narrow-screen wrapping, and a labelled pantry table scroll region.
+5. Retained the six-query recommendation baseline and added deterministic pantry/dinner/grocery ceilings. The seeded fixture measured 7/7/8 queries respectively; ten warm local Sail samples are recorded in `docs/mvp-release-checklist.md` without wall-clock CI gates.
+6. Added Composer/npm Dependabot coverage and documented security, deployment-proxy, trusted Fortify QR output, backup/restore, sync queue, future worker, scheduler, rollback, and release procedures.
+
+Baseline evidence: 135 tests and 363 assertions passed against MySQL 8.4 before changes. Final automated evidence: 143 tests and 451 assertions passed including concurrency; Pint, Larastan level 7, Vite build, npm audit, platform checks, and optimized configuration passed. The final release gate remains open for the dependency update and staging/manual checks listed in `docs/mvp-release-checklist.md`; WCAG or ASVS certification is not claimed.
 
 Avoid creating every proposed folder up front. A directory appears with its first concrete class. Existing settings SFCs and starter tests may migrate toward these conventions only when touched; no big-bang rewrite is warranted.
 
@@ -1485,7 +1490,7 @@ Avoid creating every proposed folder up front. A directory appears with its firs
 - It runs Laravel 13, PHP 8.5, Livewire 4, Flux UI, Fortify, MySQL 8.4, and a Sail/Docker development environment.
 - Authentication/settings/passkey/2FA starter code and Stages 1–4 exist, including measurement/catalogue/recipes, pantry/recommendations, rolling dinner planning/reservations, and the synchronized grocery checklist.
 - BCMath and pdo_mysql are installed in the application container.
-- Stage 1 and Stage 2 schemas are migrated in the reviewed MySQL testing database; the default DatabaseSeeder creates a known test account and an idempotent demo catalogue covering ingredient, package, pantry, recipe, archive, and recommendation states.
+- Stage 1–4 schemas are migrated in the reviewed MySQL testing database; outside production, the default DatabaseSeeder creates a known local demo account and an idempotent action-derived fixture covering catalogue, pantry, recommendations, rolling plans, reservations, history, and groceries.
 
 ### 24.2 Resolved MVP product decisions
 
@@ -1518,7 +1523,7 @@ None of the original 15 product questions remains open. The following narrow imp
 - Europe/Amsterdam is the presentation timezone implied by the Netherlands-friendly convention; timestamps remain UTC in storage.
 - The initial incompatible-measurement penalty is 10 points in config/recommendations.php and may be tuned with the other accepted weights after user testing.
 - Checking a grocery item records shopping progress but does not add stock automatically. A future receive-purchase action would require confirmed quantities.
-- Optional images use the public Storage disk and standard secure upload/deletion behaviour; advanced retention/transformations remain postponed.
+- Optional images use the public Storage disk through `RecipeImageStorage`. JPEG/PNG/WebP uploads are content/MIME/dimension verified; security re-encoding, resizing, responsive derivatives, and advanced retention remain postponed until GD is approved as a required platform extension.
 - Basic GroceryItem change timestamps are operational/UI state, not a user-facing shopping-history feature.
 
 ### 24.4 Epic support verification

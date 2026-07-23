@@ -154,7 +154,7 @@ new class extends Component {
 
 <flux:modal
     name="two-factor-setup-modal"
-    class="max-w-md md:min-w-md"
+    class="w-full max-w-md"
     @close="closeModal"
 >
         <div class="space-y-6">
