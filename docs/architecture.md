@@ -1,8 +1,8 @@
 # Dinner Decider application architecture
 
-Status: Active architecture; Stage 1 implemented
+Status: Stages 0–5 implemented; MVP release candidate with open release gates
 
-Last reviewed: 2026-07-20
+Last reviewed: 2026-07-22
 
 Source of functional scope: Dinner Decider MVP Product Specification.docx  
 Resolved product decisions: Dinner Decider — Remaining MVP Product Decisions
@@ -41,7 +41,7 @@ The design must make invalid states difficult to create: incompatible units must
 
 ### 2.1 Confirmed repository facts
 
-- The application now includes the Stage 1 measurement kernel and user-owned ingredient and recipe catalogue domains; pantry, planning, recommendations, and groceries remain future stages.
+- The application includes the Stage 1 measurement/catalogue domains, Stage 2 pantry/recommendations, Stage 3 rolling dinner plan and reservations, and the Stage 4 persisted grocery projection.
 - The runtime is PHP 8.5.8, Laravel 13.20.0, Livewire 4.3.3, Flux UI 2.15.0, and MySQL 8.4.
 - composer.json declares PHP ^8.3. CI supports PHP 8.3/Node 22.12 as the minimum pair and PHP 8.5/Node 24 as the preferred Docker runtime; this architecture does not require PHP 8.5-only syntax.
 - Laravel Sail provides the Docker development environment.
@@ -50,9 +50,9 @@ The design must make invalid states difficult to create: incompatible units must
 - The application uses database-backed sessions and cache. Queues execute synchronously for the MVP; database queue tables are retained, but no application job, worker service, or scheduled task exists.
 - PHPUnit 12, Larastan level 7, and Pint are configured.
 - The existing application layer contains focused Fortify actions and an invokable Logout action.
-- The database includes Stage 1 ingredient, package, alias, recipe, recipe-line, step, category, and tag tables in addition to the starter infrastructure.
-- Authenticated, verified product routes provide ingredient and recipe catalogue management and recipe serving previews.
-- Later-stage product data is still to be introduced, and no legacy domain rewrite is needed.
+- The database includes Stage 1–4 ingredient, recipe, pantry, rolling dinner-plan, reservation, grocery-list, grocery-item, and grocery-contribution schemas in addition to the authentication infrastructure.
+- Authenticated, verified product routes cover all six product areas: ingredients, recipes, pantry, recommendations, dinner plan, and groceries.
+- Stage 5 adds release hardening, a realistic action-derived demo fixture, shared recipe-image storage security, bounded read-path tests, and operational documentation without redesigning the schema or queue model.
 
 ### 2.2 Functional scope
 
@@ -94,7 +94,7 @@ Stage 0 resolved the original runtime and configuration inconsistencies. Remaini
 | Composer's post-create hook created an SQLite file. | Resolved: the stale hook was removed and setup uses MySQL. | Keep pure unit tests database-free rather than introducing a second database engine. |
 | The database queue was selected without a worker. | Resolved for the MVP: the default is sync and database queue infrastructure is retained but inactive. | Add a supervised worker and after-commit behavior before the first queued feature. |
 | boost.json has Sail disabled and Codex starts Boost through host PHP while DB_HOST is mysql. | Documentation tools work, but database-aware Boost tools may not reach the Docker network from host PHP. | Reconfigure the MCP command through Sail/Docker when Boost database tools are needed. |
-| The dashboard, logo, welcome screen, repository links, and README are still starter placeholders. | Stage 1 ingredient and recipe navigation now exists, while the remaining starter surfaces have not been replaced. | Replace gradually during later feature milestones; this is not an architectural rewrite. |
+| The dashboard and product navigation began as starter placeholders. | Resolved for authenticated product surfaces: the dashboard is a query-free launchpad and starter repository/documentation links are removed. The public welcome/logo remain cosmetic follow-up work. | Do not couple cosmetic public-page work to domain architecture. |
 | The generated welcome view contains a large inline style block and some starter components contain substantial inline Alpine behavior. | This differs from the repository guideline that new JS and CSS should live in dedicated assets or component files. | Do not copy this pattern into product features; migrate only when those views are touched. |
 | Existing tests use RefreshDatabase while repository guidance prefers LazilyRefreshDatabase. | Current tests are valid but may become slower as the schema grows. | Adopt LazilyRefreshDatabase for new domain feature tests and migrate existing tests opportunistically. |
 
@@ -1021,6 +1021,8 @@ Each recommendation view model includes enough explanation to answer “why?”:
 
 ### 15.2 Planning and reservation allocation
 
+Stage 3 implements this design with `DinnerPlan` as the per-user lock root, snapshot-backed `PlannedDinnerRequirement` rows, and `IngredientReservation` allocations. All supply, demand, and priority mutations call the same `ReconcilePlanReservations` workflow with deadlock retries. `AvailablePantry` subtracts a reservation aggregate in its existing bounded query, so recommendations immediately reflect planned dinners without a refresh projection or event pipeline.
+
 There is one rolling DinnerPlan for each user. Its Planned occurrences are the active ordered list; Cooked and Cancelled occurrences remain queryable as history, so no plan selector, plan name, or week boundary exists.
 
 PlanDinner runs a database transaction for an active catalogue recipe:
@@ -1187,7 +1189,7 @@ New database tests should use LazilyRefreshDatabase as required by AGENTS.md. Ex
 - Add a regression test before correcting any discovered production bug.
 - Keep query-count or eager-loading regression tests around the recommendation and grocery screens once realistic fixtures exist.
 
-CI should run formatting/static checks selected by the team, unit/feature tests, and a MySQL integration job. The current workflow's PHP/Node versions and missing MySQL service must be resolved before it can be treated as reliable evidence; see sections 2 and 19.
+CI runs formatting/static checks, unit/feature tests, and MySQL 8.4 integration across the supported PHP/Node matrix. Query ceilings cover recommendations and the pantry, dinner-plan, and grocery read paths; response-time samples remain observational because wall-clock CI assertions are unstable.
 
 ## 18. Scalability and future expansion
 
@@ -1439,33 +1441,44 @@ Verification evidence on 20 July 2026: the Stage 2 targeted tests pass against M
 
 Exit condition met: pantry totals remain precise and non-negative, current availability is derived centrally, and every active recipe receives a deterministic, explainable pantry-aware ranking.
 
-### Stage 3 — Dinner planning and reservation lifecycle (Epics 6 and 7)
+### Stage 3 — Dinner planning and reservation lifecycle (Epics 6 and 7) (complete)
 
-1. Add singleton rolling DinnerPlan, snapshot-rich PlannedDinner/Requirement, and IngredientReservation schema/models.
-2. Implement PlanDinner plus archive/history-snapshot planning and independent duplication.
-3. Implement servings/date/order changes, cancel, restore, remove, and unresolved-confirmed cook transitions.
-4. Reconcile affected reservations globally by date/list/creation priority after every supply/demand/order change.
-5. Add MySQL concurrency, rollback, restoration, and exactly-once consumption tests.
-6. Build active rolling-list/history UI with Monday-first optional dates and unresolved confirmation feedback.
+Completed on 20 July 2026:
 
-Exit condition: simultaneous planning cannot over-reserve, and cook/cancel transitions preserve pantry invariants.
+1. Added the singleton rolling DinnerPlan, snapshot-rich PlannedDinner/PlannedDinnerRequirement, and IngredientReservation persistence with factories and ownership policies.
+2. Added planning from recipes/history, independent duplication, servings/date/order changes, cancel/restore/remove, and exactly-once cooking with unresolved confirmation snapshots.
+3. Centralized reservation allocation in ReconcilePlanReservations, using the plan as the lock root and full priority ordering after every supply, demand, date, and ordering mutation.
+4. Added the responsive Livewire/Flux rolling-plan and history screen plus MySQL concurrency, rollback, restoration, allocation, and consumption tests.
 
-### Stage 4 — Grocery list (Epic 8)
+Exit condition met: simultaneous planning cannot over-reserve, and cook/cancel transitions preserve pantry invariants.
 
-1. Add GroceryList, GroceryItem, and GroceryItemContribution schema/models.
-2. Implement pure GroceryCalculator and transactional RegenerateGroceryList with package context.
-3. Connect regeneration to every relevant plan/pantry/availability action.
-4. Add temporary generated-quantity edits, manual items, quantity-increase unchecking/notices, completed clearing, contribution explanations, and no-history/idempotency tests.
+### Stage 4 — Grocery list (Epic 8) (complete)
 
-Exit condition: generated shortfalls remain synchronized without overwriting manual items or shopping state.
+Completed on 21 July 2026:
+
+1. Added one GroceryList per rolling plan, generated/manual GroceryItem rows, explanatory GroceryItemContribution rows, ownership policies, factories, uniqueness constraints, and category/checked indexes.
+2. Added the pure GroceryCalculator with immutable input/result objects, BCMath aggregation, versioned canonical keys, exact mass/volume and semantic-count behavior, known/unknown package handling, and Required non-exact checklist generation.
+3. Added transactional RegenerateGroceryList at the single reconciliation exit point. It locks and replaces the complete generated projection, preserves manual items, replaces contributions, clears temporary overrides, preserves checks on equal/decreased quantities, and unchecks plus records increases.
+4. Corrected Required non-exact coverage so only an available staple or positive pantry presence covers it; Optional non-exact rows remain informational. Grocery categories use the nine specification aisles plus `Other`, with unmatched ingredient categories mapped to `Other`.
+5. Added authorized manual add/edit/remove, generated-quantity override, check toggle, and completed-clearing actions, plus a reusable Livewire form and responsive category-grouped Flux checklist with contribution and change explanations.
+6. Updated cooking confirmation so a current generated shortfall is resolved by a checked contribution while pantry consumption remains reservation-only; checking groceries never adds pantry stock.
+
+Verification evidence on 21 July 2026: 33 focused grocery, dinner-plan (including MySQL concurrency), pantry, and product-route tests pass with 125 assertions; Laravel Pint and Larastan pass; the Vite production build succeeds in Sail.
+
+Exit condition met: generated shortfalls stay synchronized without overwriting manual items, and temporary shopping state follows the documented reset rules.
 
 ### Stage 5 — MVP hardening and release
 
-- Run accessibility, responsive, security, and end-to-end flow reviews.
-- Seed a realistic Dutch metric dataset and establish query/response baselines.
-- Verify optional secure image upload/removal and the standard no-image placeholder; do not add advanced transformations/retention.
-- Create deployment/backup/restore/worker runbooks.
-- Verify every resolved product decision in section 24 through acceptance tests and an MVP walkthrough.
+Completed on 22 July 2026:
+
+1. Replaced the starter dashboard with a query-free six-area launchpad, removed starter navigation links, removed self-service account deletion, and completed authenticated/verified grocery-route coverage.
+2. Expanded the idempotent demo fixture to 34 ingredients, 10 package definitions, 10 active recipes plus one archived recipe, and action-derived planned/cooked/cancelled/manual/checked/adjusted states. Production refuses to create the known demo account.
+3. Added `RecipeImageStorage`, which validates successful uploads, parsed JPEG/PNG/WebP content, byte and dimension limits, generates managed filenames, and centralizes rollback/replacement/removal cleanup. Security re-encoding is deferred until GD is approved as a required platform extension.
+4. Added a connected `MvpJourneyTest`, focused image tests, route/lifecycle tests, accessible non-drag ordering controls, date-picker dialog/grid keyboard semantics, narrow-screen wrapping, and a labelled pantry table scroll region.
+5. Retained the six-query recommendation baseline and added deterministic pantry/dinner/grocery ceilings. The seeded fixture measured 7/7/8 queries respectively; ten warm local Sail samples are recorded in `docs/mvp-release-checklist.md` without wall-clock CI gates.
+6. Added Composer/npm Dependabot coverage and documented security, deployment-proxy, trusted Fortify QR output, backup/restore, sync queue, future worker, scheduler, rollback, and release procedures.
+
+Baseline evidence: 135 tests and 363 assertions passed against MySQL 8.4 before changes. Final automated evidence: 143 tests and 451 assertions passed including concurrency; Pint, Larastan level 7, Vite build, npm audit, platform checks, and optimized configuration passed. The final release gate remains open for the dependency update and staging/manual checks listed in `docs/mvp-release-checklist.md`; WCAG or ASVS certification is not claimed.
 
 Avoid creating every proposed folder up front. A directory appears with its first concrete class. Existing settings SFCs and starter tests may migrate toward these conventions only when touched; no big-bang rewrite is warranted.
 
@@ -1475,9 +1488,9 @@ Avoid creating every proposed folder up front. A directory appears with its firs
 
 - The application root namespace is App.
 - It runs Laravel 13, PHP 8.5, Livewire 4, Flux UI, Fortify, MySQL 8.4, and a Sail/Docker development environment.
-- Authentication/settings/passkey/2FA starter code plus Stage 1 measurement/catalogue/recipe functionality and Stage 2 pantry/recommendation functionality exist; dinner planning, reservations, and groceries remain unimplemented.
+- Authentication/settings/passkey/2FA starter code and Stages 1–4 exist, including measurement/catalogue/recipes, pantry/recommendations, rolling dinner planning/reservations, and the synchronized grocery checklist.
 - BCMath and pdo_mysql are installed in the application container.
-- Stage 1 and Stage 2 schemas are migrated in the reviewed MySQL testing database; the default DatabaseSeeder creates a known test account and an idempotent demo catalogue covering ingredient, package, pantry, recipe, archive, and recommendation states.
+- Stage 1–4 schemas are migrated in the reviewed MySQL testing database; outside production, the default DatabaseSeeder creates a known local demo account and an idempotent action-derived fixture covering catalogue, pantry, recommendations, rolling plans, reservations, history, and groceries.
 
 ### 24.2 Resolved MVP product decisions
 
@@ -1510,7 +1523,7 @@ None of the original 15 product questions remains open. The following narrow imp
 - Europe/Amsterdam is the presentation timezone implied by the Netherlands-friendly convention; timestamps remain UTC in storage.
 - The initial incompatible-measurement penalty is 10 points in config/recommendations.php and may be tuned with the other accepted weights after user testing.
 - Checking a grocery item records shopping progress but does not add stock automatically. A future receive-purchase action would require confirmed quantities.
-- Optional images use the public Storage disk and standard secure upload/deletion behaviour; advanced retention/transformations remain postponed.
+- Optional images use the public Storage disk through `RecipeImageStorage`. JPEG/PNG/WebP uploads are content/MIME/dimension verified; security re-encoding, resizing, responsive derivatives, and advanced retention remain postponed until GD is approved as a required platform extension.
 - Basic GroceryItem change timestamps are operational/UI state, not a user-facing shopping-history feature.
 
 ### 24.4 Epic support verification

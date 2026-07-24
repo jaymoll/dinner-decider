@@ -70,6 +70,12 @@ class Recipe extends Model
         return $this->belongsToMany(Tag::class);
     }
 
+    /** @return HasMany<PlannedDinner, $this> */
+    public function plannedDinners(): HasMany
+    {
+        return $this->hasMany(PlannedDinner::class);
+    }
+
     /**
      * @param  Builder<Recipe>  $query
      * @return Builder<Recipe>

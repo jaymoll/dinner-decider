@@ -109,9 +109,11 @@ Correct:
 
 Pass data to JS via data attributes or use a dedicated PHP-to-JS package.
 
-## No Unnecessary Comments
+## Comment Non-Obvious Intent, Not Syntax
 
-Code should be readable on its own. Use descriptive method and variable names instead of comments. The only exception is config files, where descriptive comments are expected.
+Code should be readable on its own, but names and extraction cannot always communicate the reason behind a business rule. Add concise intent comments to complex or hard-to-understand functions, checks, transformations, and workflows when a future developer would otherwise need to reconstruct that reasoning.
+
+When a condition combines two or more non-obvious business questions, add a short comment that states the combined decision and why the questions must be evaluated together. Do not merely translate Boolean operators into prose.
 
 Incorrect:
 ```php
@@ -123,3 +125,13 @@ Correct:
 ```php
 if ($this->hasJoins())
 ```
+
+Correct for a compound business guard:
+```php
+// Require a fresh confirmation when shortages exist so stale approval cannot accept different shortages.
+if ($unresolved !== [] && ! hash_equals($fingerprint, (string) $confirmationFingerprint)) {
+    return $this->requestConfirmation($unresolved, $fingerprint);
+}
+```
+
+Avoid comments on simple, self-explanatory code. Config files remain a place where descriptive comments are expected.

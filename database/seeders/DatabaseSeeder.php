@@ -15,6 +15,11 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        // The known demo credentials are intentionally forbidden in production.
+        if (app()->isProduction()) {
+            return;
+        }
+
         $user = User::query()->firstOrNew([
             'email' => 'test@example.com',
         ]);
@@ -28,5 +33,6 @@ class DatabaseSeeder extends Seeder
         $user->save();
 
         $this->call(StageOneCatalogueSeeder::class);
+        $this->call(StageThreeDinnerPlanSeeder::class);
     }
 }

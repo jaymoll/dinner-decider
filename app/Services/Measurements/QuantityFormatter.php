@@ -5,6 +5,9 @@ namespace App\Services\Measurements;
 use App\Enums\MeasurementGroup;
 use App\ValueObjects\Quantity;
 
+/**
+ * Applies the presentation-only rounding and fraction policy to exact stored quantities.
+ */
 final class QuantityFormatter
 {
     public function format(Quantity $quantity, ?string $packageLabel = null): string
@@ -57,6 +60,8 @@ final class QuantityFormatter
      */
     private function roundHalfUp(string $value, int $scale): string
     {
+        // BCMath truncates division, so adding half of the final decimal place implements the
+        // configured positive-quantity half-up display rule without converting to a float.
         $increment = match ($scale) {
             0 => '0.5',
             1 => '0.05',
@@ -85,6 +90,7 @@ final class QuantityFormatter
         $fractions = config('measurements.fractions', []);
         $glyph = is_array($fractions) ? ($fractions[$decimalValue] ?? null) : null;
 
+        // Only exact configured fractions receive a glyph; approximate decimals stay decimal.
         if (! is_string($glyph)) {
             return null;
         }

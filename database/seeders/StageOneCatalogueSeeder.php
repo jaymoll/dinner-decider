@@ -90,6 +90,23 @@ class StageOneCatalogueSeeder extends Seeder
             'parmesan' => ['name' => 'Parmesan', 'category' => 'Dairy and eggs', 'group' => MeasurementGroup::Mass, 'unit' => UnitCode::Gram, 'is_staple' => false, 'is_available' => true, 'is_archived' => false, 'aliases' => ['Parmigiano Reggiano']],
             'chicken' => ['name' => 'Chicken Breast', 'category' => 'Meat', 'group' => MeasurementGroup::Mass, 'unit' => UnitCode::Gram, 'is_staple' => false, 'is_available' => true, 'is_archived' => false, 'aliases' => []],
             'basil' => ['name' => 'Fresh Basil', 'category' => 'Herbs', 'group' => MeasurementGroup::Count, 'unit' => UnitCode::Leaf, 'is_staple' => false, 'is_available' => true, 'is_archived' => false, 'aliases' => ['Basil']],
+            'yoghurt' => ['name' => 'Plain Yoghurt', 'category' => 'Dairy and eggs', 'group' => MeasurementGroup::Mass, 'unit' => UnitCode::Gram, 'is_staple' => false, 'is_available' => true, 'is_archived' => false, 'aliases' => ['Yogurt']],
+            'flour' => ['name' => 'Plain Flour', 'category' => 'Baking', 'group' => MeasurementGroup::Mass, 'unit' => UnitCode::Gram, 'is_staple' => true, 'is_available' => true, 'is_archived' => false, 'aliases' => ['All-purpose flour']],
+            'potatoes' => ['name' => 'Potatoes', 'category' => 'Vegetables', 'group' => MeasurementGroup::Mass, 'unit' => UnitCode::Gram, 'is_staple' => false, 'is_available' => true, 'is_archived' => false, 'aliases' => ['Potato']],
+            'carrot' => ['name' => 'Carrot', 'category' => 'Vegetables', 'group' => MeasurementGroup::Count, 'unit' => UnitCode::Piece, 'is_staple' => false, 'is_available' => true, 'is_archived' => false, 'aliases' => ['Carrots']],
+            'bell_pepper' => ['name' => 'Bell Pepper', 'category' => 'Vegetables', 'group' => MeasurementGroup::Count, 'unit' => UnitCode::Piece, 'is_staple' => false, 'is_available' => true, 'is_archived' => false, 'aliases' => ['Sweet pepper']],
+            'lemon' => ['name' => 'Lemon', 'category' => 'Fruit', 'group' => MeasurementGroup::Count, 'unit' => UnitCode::Piece, 'is_staple' => false, 'is_available' => true, 'is_archived' => false, 'aliases' => []],
+            'ginger' => ['name' => 'Fresh Ginger', 'category' => 'Vegetables', 'group' => MeasurementGroup::Mass, 'unit' => UnitCode::Gram, 'is_staple' => false, 'is_available' => true, 'is_archived' => false, 'aliases' => ['Ginger root']],
+            'bread' => ['name' => 'Wholegrain Bread', 'category' => 'Bakery', 'group' => MeasurementGroup::Count, 'unit' => UnitCode::Slice, 'is_staple' => false, 'is_available' => true, 'is_archived' => false, 'aliases' => ['Bread']],
+            'celery' => ['name' => 'Celery', 'category' => 'Vegetables', 'group' => MeasurementGroup::Count, 'unit' => UnitCode::Stalk, 'is_staple' => false, 'is_available' => true, 'is_archived' => false, 'aliases' => []],
+            'rosemary' => ['name' => 'Rosemary', 'category' => 'Herbs', 'group' => MeasurementGroup::Count, 'unit' => UnitCode::Sprig, 'is_staple' => false, 'is_available' => true, 'is_archived' => false, 'aliases' => []],
+            'lettuce' => ['name' => 'Lettuce', 'category' => 'Vegetables', 'group' => MeasurementGroup::Count, 'unit' => UnitCode::Leaf, 'is_staple' => false, 'is_available' => true, 'is_archived' => false, 'aliases' => []],
+            'garlic_bulb' => ['name' => 'Garlic Bulb', 'category' => 'Vegetables', 'group' => MeasurementGroup::Count, 'unit' => UnitCode::Bulb, 'is_staple' => false, 'is_available' => true, 'is_archived' => false, 'aliases' => []],
+            'kidney_beans' => ['name' => 'Kidney Beans', 'category' => 'Canned goods', 'group' => MeasurementGroup::Mass, 'unit' => UnitCode::Gram, 'is_staple' => false, 'is_available' => true, 'is_archived' => false, 'aliases' => ['Red beans']],
+            'tuna' => ['name' => 'Tuna', 'category' => 'Canned goods', 'group' => MeasurementGroup::Mass, 'unit' => UnitCode::Gram, 'is_staple' => false, 'is_available' => true, 'is_archived' => false, 'aliases' => ['Canned tuna']],
+            'cheddar' => ['name' => 'Cheddar', 'category' => 'Dairy and eggs', 'group' => MeasurementGroup::Mass, 'unit' => UnitCode::Gram, 'is_staple' => false, 'is_available' => true, 'is_archived' => false, 'aliases' => []],
+            'butter' => ['name' => 'Butter', 'category' => 'Dairy and eggs', 'group' => MeasurementGroup::Mass, 'unit' => UnitCode::Gram, 'is_staple' => true, 'is_available' => true, 'is_archived' => false, 'aliases' => []],
+            'oats' => ['name' => 'Rolled Oats', 'category' => 'Breakfast', 'group' => MeasurementGroup::Mass, 'unit' => UnitCode::Gram, 'is_staple' => false, 'is_available' => true, 'is_archived' => false, 'aliases' => ['Oats']],
             'truffle_oil' => ['name' => 'Truffle Oil', 'category' => 'Oils and condiments', 'group' => MeasurementGroup::Volume, 'unit' => UnitCode::Millilitre, 'is_staple' => false, 'is_available' => true, 'is_archived' => true, 'aliases' => []],
         ];
     }
@@ -105,6 +122,12 @@ class StageOneCatalogueSeeder extends Seeder
             'tomato_can' => [$ingredients['tomatoes'], PackageType::Can, '400 g can', '400', UnitCode::Gram, '400'],
             'coconut_can' => [$ingredients['coconut_milk'], PackageType::Can, '400 ml can', '400', UnitCode::Millilitre, '400'],
             'spinach_bag' => [$ingredients['spinach'], PackageType::Bag, '200 g bag', '200', UnitCode::Gram, '200'],
+            'rice_bag' => [$ingredients['rice'], PackageType::Bag, '1 kg bag', '1000', UnitCode::Gram, '1000'],
+            'oil_bottle' => [$ingredients['olive_oil'], PackageType::Bottle, '500 ml bottle', '500', UnitCode::Millilitre, '500'],
+            'milk_bottle' => [$ingredients['milk'], PackageType::Bottle, '1 l bottle', '1000', UnitCode::Millilitre, '1000'],
+            'tuna_can' => [$ingredients['tuna'], PackageType::Can, '145 g can', '145', UnitCode::Gram, '145'],
+            'egg_pack' => [$ingredients['eggs'], PackageType::Pack, 'Mixed-size egg pack', null, null, null],
+            'bread_bag' => [$ingredients['bread'], PackageType::Bag, 'Bakery loaf', null, null, null],
         ];
         $packages = [];
 
@@ -143,7 +166,7 @@ class StageOneCatalogueSeeder extends Seeder
         ];
 
         foreach ($entries as [$ingredient, $package, $displayUnit, $amount, $compatibilityKey, $mergeKey]) {
-            $user->pantryEntries()->updateOrCreate(
+            $user->pantryEntries()->firstOrCreate(
                 ['ingredient_id' => $ingredient->id, 'merge_key' => $mergeKey],
                 [
                     'ingredient_package_id' => $package?->id,
@@ -283,6 +306,108 @@ class StageOneCatalogueSeeder extends Seeder
         ], [$categories['Quick meals'], $categories['Vegetarian']], [$tags['Pantry ready'], $tags['High protein']]);
 
         $this->seedRecipe($user, [
+            'name' => 'Butter Toast',
+            'description' => null,
+            'default_servings' => 1,
+            'preparation_minutes' => null,
+            'cooking_minutes' => null,
+            'difficulty' => null,
+            'cuisine' => null,
+            'meal_type' => null,
+            'notes' => null,
+            'source_url' => null,
+            'archived_at' => null,
+        ], [
+            $this->exactIngredient($ingredients['bread'], '2', UnitCode::Slice, '2', 'count:'.$ingredients['bread']->id.':slice'),
+        ], [
+            'Toast the bread until golden.',
+        ], [], []);
+
+        $this->seedRecipe($user, [
+            'name' => 'Rosemary Roast Vegetables',
+            'description' => 'Count- and mass-aware vegetables with a required herb garnish.',
+            'default_servings' => 4,
+            'preparation_minutes' => 15,
+            'cooking_minutes' => 40,
+            'difficulty' => 'Easy',
+            'cuisine' => 'European',
+            'meal_type' => 'Dinner',
+            'notes' => null,
+            'source_url' => null,
+            'archived_at' => null,
+        ], [
+            $this->exactIngredient($ingredients['potatoes'], '800', UnitCode::Gram, '800', 'mass'),
+            $this->exactIngredient($ingredients['carrot'], '4', UnitCode::Piece, '4', 'count:'.$ingredients['carrot']->id.':piece'),
+            $this->exactIngredient($ingredients['bell_pepper'], '2', UnitCode::Piece, '2', 'count:'.$ingredients['bell_pepper']->id.':piece'),
+            $this->exactIngredient($ingredients['rosemary'], '2', UnitCode::Sprig, '2', 'count:'.$ingredients['rosemary']->id.':sprig'),
+        ], [
+            'Cut the vegetables into even pieces.',
+            'Roast with rosemary until tender and browned.',
+        ], [$categories['Weeknight dinners'], $categories['Vegetarian']], [$tags['Missing ingredients']]);
+
+        $this->seedRecipe($user, [
+            'name' => 'Garlic Bulb Soup',
+            'description' => 'Keeps bulb counts distinct from clove counts.',
+            'default_servings' => 4,
+            'preparation_minutes' => 10,
+            'cooking_minutes' => 45,
+            'difficulty' => 'Easy',
+            'cuisine' => 'European',
+            'meal_type' => 'Dinner',
+            'notes' => null,
+            'source_url' => null,
+            'archived_at' => null,
+        ], [
+            $this->exactIngredient($ingredients['garlic_bulb'], '2', UnitCode::Bulb, '2', 'count:'.$ingredients['garlic_bulb']->id.':bulb'),
+            $this->exactIngredient($ingredients['potatoes'], '400', UnitCode::Gram, '400', 'mass'),
+            $this->nonExactIngredient($ingredients['salt'], 'To taste', NonExactStatus::Required),
+        ], [
+            'Roast the garlic bulbs until soft.',
+            'Simmer with potatoes, then blend until smooth.',
+        ], [$categories['Vegetarian']], [$tags['Missing ingredients']]);
+
+        $this->seedRecipe($user, [
+            'name' => 'Tuna Rice Bowl',
+            'description' => 'A known package example with an exact metric grocery shortfall.',
+            'default_servings' => 2,
+            'preparation_minutes' => 10,
+            'cooking_minutes' => 20,
+            'difficulty' => 'Easy',
+            'cuisine' => 'International',
+            'meal_type' => 'Dinner',
+            'notes' => null,
+            'source_url' => null,
+            'archived_at' => null,
+        ], [
+            $this->exactIngredient($ingredients['rice'], '160', UnitCode::Gram, '160', 'mass'),
+            $this->packageIngredient($ingredients['tuna'], $packages['tuna_can'], '1', '145', 'mass'),
+            $this->exactIngredient($ingredients['lemon'], '1', UnitCode::Piece, '1', 'count:'.$ingredients['lemon']->id.':piece'),
+        ], [
+            'Cook the rice.',
+            'Top with tuna and fresh lemon.',
+        ], [$categories['Quick meals']], [$tags['Partial pantry'], $tags['High protein']]);
+
+        $this->seedRecipe($user, [
+            'name' => 'Yoghurt Oats',
+            'description' => 'A simple mass-based breakfast with an optional garnish.',
+            'default_servings' => 2,
+            'preparation_minutes' => 5,
+            'cooking_minutes' => 0,
+            'difficulty' => 'Easy',
+            'cuisine' => null,
+            'meal_type' => 'Breakfast',
+            'notes' => null,
+            'source_url' => null,
+            'archived_at' => null,
+        ], [
+            $this->exactIngredient($ingredients['oats'], '100', UnitCode::Gram, '100', 'mass'),
+            $this->exactIngredient($ingredients['yoghurt'], '300', UnitCode::Gram, '300', 'mass'),
+            $this->nonExactIngredient($ingredients['basil'], 'Optional garnish', NonExactStatus::Optional),
+        ], [
+            'Mix the oats and yoghurt, then rest before serving.',
+        ], [$categories['Quick meals'], $categories['Vegetarian']], [$tags['Missing ingredients']]);
+
+        $this->seedRecipe($user, [
             'name' => 'Archived Parmesan Pasta',
             'description' => 'An archived fixture for testing restore and archive views.',
             'default_servings' => 2,
@@ -340,7 +465,7 @@ class StageOneCatalogueSeeder extends Seeder
     }
 
     /**
-     * @param  array{name: string, description: string, default_servings: int, preparation_minutes: int, cooking_minutes: int, difficulty: string, cuisine: string|null, meal_type: string, notes: string|null, source_url: string|null, archived_at: mixed}  $attributes
+     * @param  array{name: string, description: string|null, default_servings: int, preparation_minutes: int|null, cooking_minutes: int|null, difficulty: string|null, cuisine: string|null, meal_type: string|null, notes: string|null, source_url: string|null, archived_at: mixed}  $attributes
      * @param  list<array<string, mixed>>  $ingredients
      * @param  list<string>  $steps
      * @param  list<RecipeCategory>  $categories

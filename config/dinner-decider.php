@@ -1,6 +1,7 @@
 <?php
 
 return [
+    // Timestamps remain UTC in storage; these values define the English, Netherlands-friendly UI.
     'display_timezone' => 'Europe/Amsterdam',
     'date_format' => 'd-m-Y',
     'time_format' => 'H:i',

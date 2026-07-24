@@ -13,6 +13,7 @@
             this.supported = Boolean(window.Passkeys?.isSupported());
         },
         getDefaultPasskeyName() {
+            // This is only a convenience label; authentication never trusts user-agent detection.
             const ua = navigator.userAgent;
 
             const browser = [
@@ -51,6 +52,7 @@
                 this.showForm = false;
                 await $wire.loadPasskeys();
             } catch (e) {
+                // Closing the platform prompt is a normal user choice, not an actionable error.
                 if (e.constructor?.name !== 'UserCancelledError') {
                     this.error = e.message;
                 }

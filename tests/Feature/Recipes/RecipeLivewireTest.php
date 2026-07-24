@@ -51,7 +51,8 @@ class RecipeLivewireTest extends TestCase
             ->test('pages::recipes.show', ['recipe' => $recipe])
             ->set('selectedServings', 2)
             ->assertSee('200 g')
-            ->assertSee('To taste');
+            ->assertSee('To taste')
+            ->assertSee('No recipe image');
 
         $this->assertSame('400.000000', $recipe->ingredients()->firstOrFail()->entered_amount);
     }

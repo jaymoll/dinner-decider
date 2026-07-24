@@ -75,6 +75,8 @@ class IngredientForm extends Form
             'packages.*.content_unit' => ['nullable', Rule::enum(UnitCode::class)],
         ]);
 
+        // These rules compare sibling fields or owned records and therefore cannot be expressed by
+        // isolated field rules without duplicating lookup and normalization behavior.
         $validator->after(function (ValidationValidator $validator) use ($user): void {
             $unit = UnitCode::tryFrom($this->preferred_unit);
             $group = MeasurementGroup::tryFrom($this->preferred_measurement_group);
@@ -91,6 +93,8 @@ class IngredientForm extends Form
             foreach ($this->packages as $index => $package) {
                 $hasAmount = filled($package['content_amount']);
                 $hasUnit = filled($package['content_unit']);
+
+                // A partial package definition cannot be normalized or safely treated as unknown.
                 if ($hasAmount !== $hasUnit) {
                     $validator->errors()->add("packages.{$index}.content_amount", 'Provide both package content amount and unit, or leave both empty.');
                 }

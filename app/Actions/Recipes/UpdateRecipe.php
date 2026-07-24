@@ -4,24 +4,25 @@ namespace App\Actions\Recipes;
 
 use App\Models\Recipe;
 use App\Models\User;
-use Illuminate\Http\UploadedFile;
+use App\Services\RecipeImageStorage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\Storage;
-use RuntimeException;
 use Throwable;
 
 /** @phpstan-import-type RecipeData from SaveRecipeDetails */
 final readonly class UpdateRecipe
 {
-    public function __construct(private SaveRecipeDetails $saveRecipeDetails) {}
+    public function __construct(
+        private SaveRecipeDetails $saveRecipeDetails,
+        private RecipeImageStorage $recipeImageStorage,
+    ) {}
 
     /** @param RecipeData $data */
     public function handle(User $user, Recipe $recipe, array $data): Recipe
     {
         Gate::forUser($user)->authorize('update', $recipe);
         $previousImagePath = $recipe->image_path;
-        $newImagePath = $this->storeImage($data['image'] ?? null);
+        $newImagePath = $this->recipeImageStorage->store($data['image'] ?? null);
         $imagePath = $newImagePath ?? (($data['remove_image'] ?? false) ? null : $previousImagePath);
 
         try {
@@ -31,32 +32,17 @@ final readonly class UpdateRecipe
                 return $this->saveRecipeDetails->handle($recipe, $data);
             });
         } catch (Throwable $throwable) {
-            if ($newImagePath !== null) {
-                Storage::disk('public')->delete($newImagePath);
-            }
+            // Keep the previous image intact and remove only the uncommitted replacement.
+            $this->recipeImageStorage->delete($newImagePath);
 
             throw $throwable;
         }
 
+        // Delete the old image only after the database points safely at its replacement or null.
         if ($previousImagePath !== null && $previousImagePath !== $imagePath) {
-            Storage::disk('public')->delete($previousImagePath);
+            $this->recipeImageStorage->delete($previousImagePath);
         }
 
         return $updatedRecipe;
-    }
-
-    private function storeImage(mixed $image): ?string
-    {
-        if (! $image instanceof UploadedFile) {
-            return null;
-        }
-
-        $path = $image->store('recipe-images', 'public');
-
-        if (! is_string($path)) {
-            throw new RuntimeException('The recipe image could not be stored.');
-        }
-
-        return $path;
     }
 }

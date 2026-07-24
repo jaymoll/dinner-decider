@@ -10,9 +10,11 @@ use App\Models\Ingredient;
 use App\Models\IngredientPackage;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use RuntimeException;
 use Tests\TestCase;
 
 class RecipeManagementTest extends TestCase
@@ -73,6 +75,83 @@ class RecipeManagementTest extends TestCase
 
         Storage::disk('public')->assertMissing($oldPath);
         Storage::disk('public')->assertExists($updated->image_path);
+        $this->assertMatchesRegularExpression('/^recipe-images\/[0-9a-f-]+\.png$/', (string) $updated->image_path);
+        $this->assertSame('image/png', Storage::disk('public')->mimeType($updated->image_path));
+    }
+
+    public function test_recipe_image_can_be_explicitly_removed(): void
+    {
+        Storage::fake('public');
+        $user = User::factory()->create();
+        $ingredient = Ingredient::factory()->for($user)->create();
+        $data = $this->recipeData([['ingredient_id' => $ingredient->id, 'quantity_type' => 'exact', 'amount' => '100', 'unit' => 'g', 'ingredient_package_id' => null, 'description' => null, 'non_exact_status' => null]]);
+        $recipe = app(CreateRecipe::class)->handle($user, array_merge($data, ['image' => UploadedFile::fake()->image('recipe.webp')]));
+        $path = $recipe->image_path;
+
+        $updated = app(UpdateRecipe::class)->handle($user, $recipe, array_merge($data, ['remove_image' => true]));
+
+        $this->assertNull($updated->image_path);
+        Storage::disk('public')->assertMissing($path);
+    }
+
+    public function test_recipe_images_reject_forged_and_disallowed_content(): void
+    {
+        Storage::fake('public');
+        $user = User::factory()->create();
+        $ingredient = Ingredient::factory()->for($user)->create();
+        $data = $this->recipeData([['ingredient_id' => $ingredient->id, 'quantity_type' => 'exact', 'amount' => '100', 'unit' => 'g', 'ingredient_package_id' => null, 'description' => null, 'non_exact_status' => null]]);
+
+        foreach ([
+            new UploadedFile(__FILE__, 'partial.jpg', 'image/jpeg', UPLOAD_ERR_PARTIAL, true),
+            UploadedFile::fake()->createWithContent('forged.jpg', 'not an image'),
+            UploadedFile::fake()->image('animation.gif'),
+            UploadedFile::fake()->createWithContent('vector.svg', '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'),
+        ] as $image) {
+            try {
+                app(CreateRecipe::class)->handle($user, array_merge($data, ['image' => $image]));
+                $this->fail("{$image->getClientOriginalName()} should have been rejected.");
+            } catch (RuntimeException $exception) {
+                $this->assertStringContainsString('recipe image', strtolower($exception->getMessage()));
+            }
+        }
+
+        Storage::disk('public')->assertDirectoryEmpty('recipe-images');
+    }
+
+    public function test_oversize_and_unsafe_dimension_recipe_images_are_rejected(): void
+    {
+        Storage::fake('public');
+        $user = User::factory()->create();
+        $ingredient = Ingredient::factory()->for($user)->create();
+        $data = $this->recipeData([['ingredient_id' => $ingredient->id, 'quantity_type' => 'exact', 'amount' => '100', 'unit' => 'g', 'ingredient_package_id' => null, 'description' => null, 'non_exact_status' => null]]);
+
+        foreach ([
+            UploadedFile::fake()->image('large.jpg')->size(4097),
+            UploadedFile::fake()->image('wide.png', 6001, 1),
+        ] as $image) {
+            try {
+                app(CreateRecipe::class)->handle($user, array_merge($data, ['image' => $image]));
+                $this->fail("{$image->getClientOriginalName()} should have been rejected.");
+            } catch (RuntimeException) {
+                $this->assertTrue(true);
+            }
+        }
+
+        Storage::disk('public')->assertDirectoryEmpty('recipe-images');
+    }
+
+    public function test_stored_image_is_cleaned_up_when_recipe_persistence_fails(): void
+    {
+        Storage::fake('public');
+        $user = User::factory()->create();
+        $data = $this->recipeData([['ingredient_id' => PHP_INT_MAX, 'quantity_type' => 'exact', 'amount' => '100', 'unit' => 'g', 'ingredient_package_id' => null, 'description' => null, 'non_exact_status' => null]]);
+
+        try {
+            app(CreateRecipe::class)->handle($user, array_merge($data, ['image' => UploadedFile::fake()->image('recipe.jpg')]));
+            $this->fail('Recipe persistence should have failed.');
+        } catch (ModelNotFoundException) {
+            Storage::disk('public')->assertDirectoryEmpty('recipe-images');
+        }
     }
 
     public function test_recipe_archive_restore_and_ownership_are_enforced(): void

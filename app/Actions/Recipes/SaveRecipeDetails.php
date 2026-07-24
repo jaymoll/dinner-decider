@@ -42,6 +42,9 @@ final readonly class SaveRecipeDetails
             'source_url' => $this->nullableClean($data['source_url'] ?? null),
         ]);
 
+        // Child rows are replaced in their submitted order inside the caller's transaction. Keep
+        // the previous ingredient IDs so an archived ingredient already in this recipe remains
+        // editable, while archived catalogue entries cannot be newly introduced.
         $existingIngredientIds = $recipe->ingredients()->pluck('ingredient_id');
         $recipe->ingredients()->delete();
         foreach ($data['ingredients'] as $index => $ingredientData) {
@@ -115,6 +118,7 @@ final readonly class SaveRecipeDetails
             throw new InvalidArgumentException('The selected unit is incompatible with the ingredient.');
         }
 
+        // Count units carry ingredient-specific meaning; a clove cannot be inferred from a bulb.
         if ($unit->measurementGroup() === MeasurementGroup::Count && $unit !== $ingredient->preferred_unit) {
             throw new InvalidArgumentException('Semantic count units cannot be converted automatically.');
         }
@@ -127,6 +131,7 @@ final readonly class SaveRecipeDetails
      */
     private function catalogueIds(string $modelClass, Recipe $recipe, array $names): array
     {
+        // Catalogue labels are user-owned and case-insensitively deduplicated before sync.
         return array_values(collect($names)
             ->map(fn (string $name): string => $this->clean($name))
             ->filter()

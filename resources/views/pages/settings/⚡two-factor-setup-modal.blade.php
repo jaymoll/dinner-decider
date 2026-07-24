@@ -36,6 +36,7 @@ new class extends Component {
     #[On('start-two-factor-setup')]
     public function startTwoFactorSetup(): void
     {
+        // Fortify must persist the encrypted secret before QR and manual setup data can be derived.
         $enableTwoFactorAuthentication = app(EnableTwoFactorAuthentication::class);
         $enableTwoFactorAuthentication(auth()->user());
 
@@ -57,6 +58,7 @@ new class extends Component {
             $this->qrCodeSvg = $user->twoFactorQrCodeSvg();
             $this->manualSetupKey = decrypt($user->two_factor_secret);
         } catch (Exception) {
+            // Keep decryption and provider details out of the browser-facing error response.
             $this->addError('setupData', 'Failed to fetch setup data.');
 
             $this->reset('qrCodeSvg', 'manualSetupKey');
@@ -111,6 +113,7 @@ new class extends Component {
      */
     public function closeModal(): void
     {
+        // Setup secrets should not remain in Livewire state after the ceremony closes.
         $this->reset(
             'code',
             'manualSetupKey',
@@ -154,7 +157,7 @@ new class extends Component {
 
 <flux:modal
     name="two-factor-setup-modal"
-    class="max-w-md md:min-w-md"
+    class="w-full max-w-md"
     @close="closeModal"
 >
         <div class="space-y-6">
@@ -236,6 +239,7 @@ new class extends Component {
                                     class="bg-white p-3 rounded"
                                     :style="($flux.appearance === 'dark' || ($flux.appearance === 'system' && $flux.dark)) ? 'filter: invert(1) brightness(1.5)' : ''"
                                 >
+                                    {{-- Fortify generates this SVG from the authenticated user's encrypted secret. --}}
                                     {!! $qrCodeSvg !!}
                                 </div>
                             </div>

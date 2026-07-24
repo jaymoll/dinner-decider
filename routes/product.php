@@ -4,6 +4,8 @@ use Illuminate\Support\Facades\Route;
 
 Route::livewire('ingredients', 'pages::ingredients.index')->name('ingredients.index');
 Route::livewire('ingredients/create', 'pages::ingredients.create')->name('ingredients.create');
+
+// Static archive paths must precede the model-bound edit/show routes that could capture "archive".
 Route::livewire('ingredients/archive', 'pages::ingredients.archive')->name('ingredients.archive');
 Route::livewire('ingredients/{ingredient}/edit', 'pages::ingredients.edit')->name('ingredients.edit');
 
@@ -18,3 +20,5 @@ Route::livewire('pantry/create', 'pages::pantry.create')->name('pantry.create');
 Route::livewire('pantry/{pantryEntry}/edit', 'pages::pantry.edit')->name('pantry.edit');
 
 Route::livewire('recommendations', 'pages::recommendations.index')->name('recommendations.index');
+Route::livewire('dinner-plan', 'pages::dinner-plans.index')->name('dinner-plans.index');
+Route::livewire('groceries', 'pages::groceries.index')->name('groceries.index');

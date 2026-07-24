@@ -8,6 +8,9 @@ use App\ValueObjects\CompatibilityKey;
 use App\ValueObjects\Quantity;
 use InvalidArgumentException;
 
+/**
+ * Normalizes direct units and package counts to the base amount used for matching and storage.
+ */
 final readonly class UnitConverter
 {
     public function __construct(private QuantityInputParser $parser) {}
@@ -44,6 +47,8 @@ final readonly class UnitConverter
         }
 
         if (! $input->hasKnownPackageContents()) {
+            // An unknown package cannot participate in metric conversion, so its definition is
+            // part of the compatibility key and it only combines with the exact same package.
             return new Quantity(
                 amount: $packageCount,
                 unit: null,
@@ -63,6 +68,7 @@ final readonly class UnitConverter
         $contentNormalized = bcmul($contentAmount, $input->packageContentUnit->factorToBase(), $this->scale());
         $normalizedAmount = bcmul($packageCount, $contentNormalized, $this->scale());
 
+        // Preserve package count for display while storing the metric total for allocation.
         return new Quantity(
             amount: $packageCount,
             unit: null,
