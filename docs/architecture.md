@@ -1576,7 +1576,7 @@ Verification evidence on 21 July 2026: 33 focused grocery, dinner-plan (includin
 
 Exit condition met: generated shortfalls stay synchronized without overwriting manual items, and temporary shopping state follows the documented reset rules.
 
-### Stage 5 — MVP hardening and release
+### Stage 5 — MVP hardening and release (complete)
 
 Completed on 22 July 2026:
 
