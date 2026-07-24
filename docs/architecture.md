@@ -1,22 +1,23 @@
 # Dinner Decider application architecture
 
-Status: Stages 0–5 implemented; MVP release candidate with open release gates
+Status: Stages 0–5 implemented; MVP release candidate with open release gates; Post-MVP Epics 9–23 architected but not implemented
 
-Last reviewed: 2026-07-22
+Last reviewed: 2026-07-24
 
-Source of functional scope: Dinner Decider MVP Product Specification.docx  
-Resolved product decisions: Dinner Decider — Remaining MVP Product Decisions
+Sources of functional scope: Dinner Decider MVP Product Specification.docx and Dinner Decider Post-MVP Development Plan.docx<br>
+Resolved product decisions: Dinner Decider — Remaining MVP Product Decisions<br>
 Target runtime: PHP 8.5, Laravel 13, Livewire 4, Flux UI 2, MySQL 8.4
 
 ## Reading this document
 
-This document distinguishes three kinds of statements:
+This document distinguishes four kinds of statements:
 
 - **Confirmed repository fact** describes code or configuration that exists now.
-- **MVP decision** is the architecture to implement for the eight defined epics.
+- **MVP decision** is the architecture adopted for the eight defined epics.
+- **Post-MVP decision** is the target architecture for Epics 9–23. It is approved roadmap direction, not a claim that the code exists.
 - **Future option** is a deliberate extension point, not work required now.
 
-The architecture is a development reference, not an instruction to implement every directory or class immediately. New classes should be introduced only with the milestone that needs them.
+The architecture is a development reference, not an instruction to implement every directory or class immediately. New classes should be introduced only with the milestone that needs them. Sections 1–24 establish the implemented MVP baseline, enduring rules, cross-cutting decisions, and staged roadmap; Section 25 describes the detailed post-MVP deltas. When the post-MVP plan says to add something that already exists, the confirmed repository fact and the delta in Section 25 take precedence over creating a duplicate concept.
 
 ## 1. Purpose and architectural goals
 
@@ -33,7 +34,9 @@ The architecture therefore prioritizes:
 5. Focused application actions for business operations.
 6. Eloquent and Laravel conventions instead of a parallel framework.
 7. Deterministic, independently testable recommendation, allocation, scaling, and grocery algorithms.
-8. An MVP-sized modular monolith that can grow without being split prematurely.
+8. A modular monolith that can grow from the MVP through the post-MVP roadmap without being split prematurely.
+9. Complete household isolation once shared ownership is introduced.
+10. Reviewable, failure-tolerant external data ingestion that never bypasses deterministic domain rules.
 
 The design must make invalid states difficult to create: incompatible units must not match, stock must not become negative, reservations must not be applied twice, and a cooked dinner must not be consumed twice.
 
@@ -53,6 +56,7 @@ The design must make invalid states difficult to create: incompatible units must
 - The database includes Stage 1–4 ingredient, recipe, pantry, rolling dinner-plan, reservation, grocery-list, grocery-item, and grocery-contribution schemas in addition to the authentication infrastructure.
 - Authenticated, verified product routes cover all six product areas: ingredients, recipes, pantry, recommendations, dinner plan, and groceries.
 - Stage 5 adds release hardening, a realistic action-derived demo fixture, shared recipe-image storage security, bounded read-path tests, and operational documentation without redesigning the schema or queue model.
+- Laravel Sanctum is not installed and routes/api.php does not exist; Epic 23 must treat API authentication/routing as an approved dependency and delivery change, not a current capability.
 
 ### 2.2 Functional scope
 
@@ -69,7 +73,27 @@ The MVP specification defines eight epics:
 
 Explicitly excluded from the MVP are AI recipe generation, recipe imports, substitutions, dietary profiles, shared households, expiry tracking, package rounding, prices, barcode scanning, imperial units, approximate conversions, and automatic multi-dinner plan generation. The architecture must not smuggle these features back in as speculative abstractions.
 
-The resolved decisions add basic Cooked/Cancelled dinner history inside the rolling plan because it is needed for snapshots, duplication, and restore. This does not add the richer cooking-history/ratings feature excluded by the original specification.
+The resolved decisions add basic Cooked/Cancelled dinner history inside the rolling plan because it is needed for snapshots, duplication, and restore. This is the baseline that Epic 11 extends with a fuller chronological history query, filters, and lifecycle evidence; Epic 11 must not create a second dinner-history aggregate.
+
+The post-MVP plan defines fifteen additional epics:
+
+| Phase | Epics |
+| --- | --- |
+| MVP Stabilisation | 9. MVP Quality and Architecture Review |
+| Everyday Usability | 10. Recipe Favourites; 11. Cooking and Dinner History; 12. Decision Mode |
+| Recipe Discovery and Flexibility | 13. Recipe Tags and Dietary Filters; 14. Ingredient Substitutions |
+| Household Support | 15. Shared Households |
+| Smarter Pantry Management | 16. Pantry Expiry Dates; 17. Package Sizes and Supermarket Rounding; 18. Grocery Prices and Budgeting |
+| Data Entry Improvements | 19. Recipe Import; 20. AI-Assisted Recipe Processing |
+| Product Expansion | 21. Barcode Scanning; 22. Progressive Web App; 23. Public API |
+
+Several roadmap epics deliberately extend current concepts:
+
+- Recipe favourites are new and remain personal even after household migration.
+- Cooked/cancelled status, timestamps, snapshots, restoration, and history-based planning already exist; Epic 11 adds history completeness and usability.
+- Free-form Tag and recipe-tag persistence already exist; Epic 13 adds structured dietary facts and shared filtering rules rather than another tag system.
+- IngredientPackage already represents ingredient-specific package contents; Epic 17 adds retail purchase options and rounding without replacing exact requirement quantities.
+- The current per-user ownership model remains authoritative until Epic 15 performs an explicit, tested household migration.
 
 ### 2.3 Technical constraints
 
@@ -78,9 +102,13 @@ The resolved decisions add basic Cooked/Cancelled dinner history inside the roll
 - The supported measurement system is metric plus semantic count units and explicitly defined packages.
 - Existing Laravel conventions and the App root namespace must remain intact.
 - Product code remains compatible with the declared PHP ^8.3 constraint until the runtime/support policy is changed and tested.
-- The first frontend remains server-driven Livewire and Blade; no separate SPA or API is required.
+- The primary frontend remains server-driven Livewire and Blade. Epic 23 later adds an API delivery adapter; it does not require replacing the web UI with a separate SPA.
 - User-facing writes must be authorized and validated server-side even when the interface already constrains input.
 - Core correctness cannot depend on a queue worker because the current Compose stack does not run one.
+- Post-MVP external providers are optional edges. Recipe creation, pantry entry, shopping, and planning must retain a manual path when a provider is unavailable.
+- Shared-household work must use an expand/backfill/enforce migration and tenant-isolation tests; a request-scoped active household is context, never authorization by itself.
+- Exact recipe need, pantry truth, reservations, and grocery shortfalls remain deterministic even when package optimization, price estimates, imports, AI extraction, barcodes, an API, or a PWA are added.
+- New Composer or npm dependencies, external providers, and production queue/worker services require an explicit implementation-time dependency and operations decision.
 
 ### 2.4 Baseline hardening status and remaining incomplete patterns
 
@@ -131,7 +159,7 @@ Reservation, consumption, requirement snapshots, and grocery regeneration comple
 
 ### 3.7 Ownership and authorization are explicit
 
-MVP catalogue and planning data belong to one User. Every aggregate-root query is user-scoped, and every mutation is policy-authorized. A future household model is a migration, not a polymorphic owner abstraction added today.
+MVP catalogue and planning data belong to one User. Every aggregate-root query is user-scoped, and every mutation is policy-authorized. Epic 15 deliberately migrates shared catalogue, pantry, planning, reservation, and grocery aggregates to Household while favourites and other personal preferences remain user-owned. The transition uses concrete foreign keys and explicit policies/query scopes, not a polymorphic owner abstraction or an unreviewed global tenant scope.
 
 ### 3.8 Optimize only where the epics create pressure
 
@@ -141,7 +169,7 @@ Use eager loading, indexes, aggregate queries, pagination, and deterministic alg
 
 ### 4.1 Style
 
-**MVP decision: Laravel-first modular monolith with feature-oriented namespaces, an action-oriented application layer, and a light domain model.**
+**MVP and post-MVP decision: Laravel-first modular monolith with feature-oriented namespaces, an action-oriented application layer, and a light domain model.**
 
 The code stays in one Laravel application and one MySQL database. Conventional top-level directories remain recognizable. Within those directories, classes are grouped by feature where that improves navigation:
 
@@ -331,6 +359,26 @@ Recommendations and Groceries must not call each other. Cross-module mutations a
 | 7. Ingredient Reservation Lifecycle | Dinner Planning and Pantry | Priority reconciliation, transactions/locks, confirmation, IngredientReservation |
 | 8. Grocery List Generation | Groceries | GroceryCalculator, temporary overrides, increase-sensitive checks, stable identities/contributions |
 
+Post-MVP coverage extends those modules rather than creating a parallel application:
+
+| Epic | Primary module | Supporting components and baseline to reuse |
+| --- | --- | --- |
+| 9. MVP Quality and Architecture Review | Cross-cutting quality gate | Existing action/service boundaries, MySQL constraints, Stage 5 journey/concurrency/query tests, docs and runbooks |
+| 10. Recipe Favourites | Personal Preferences and Recipes | User/Recipe pivot, focused favourite actions, recipe queries, recommendation tie-break |
+| 11. Cooking and Dinner History | Dinner Planning | Existing PlannedDinner statuses/timestamps/snapshots and planning-from-history actions; add lifecycle evidence and filtered history query |
+| 12. Decision Mode | Recommendations and Dinner Planning | Existing recommendation results/explanations, deterministic DecisionEngine, PlanDinner |
+| 13. Recipe Tags and Dietary Filters | Recipes and Recommendations | Existing Tag pivot; add explicit structured dietary facts and one reusable eligibility/filter query |
+| 14. Ingredient Substitutions | Recipes, Planning, Pantry, and Groceries | Explicit substitution rules, occurrence-level snapshots, full reservation and grocery reconciliation |
+| 15. Shared Households | Identity and Access plus every shared aggregate | Household/membership/invitation policies, active context, explicit tenant scopes, expand/backfill/enforce migration |
+| 16. Pantry Expiry Dates | Pantry and Dinner Planning | PantryStockBatch source of stock truth, batch reservations, earliest-expiry allocation, recommendation expiry factor |
+| 17. Package Sizes and Supermarket Rounding | Ingredients, Measurements, and Groceries | Extend IngredientPackage; pure PackagePurchaseOptimizer; exact need remains separate |
+| 18. Grocery Prices and Budgeting | Groceries and Recommendations | Integer-minor-unit Money, package price estimates, partial/unknown totals, optional plan budget |
+| 19. Recipe Import | Recipes and Integrations | Import DTO/draft/review pipeline, ingredient matching, existing CreateRecipe action |
+| 20. AI-Assisted Recipe Processing | Integrations and Recipe Import | RecipeTextExtractor contract, provider adapter, structured validation, same review pipeline |
+| 21. Barcode Scanning | Integrations, Ingredients, and Pantry | Barcode mapping/provider, confirmed package mapping, existing pantry action/batch workflow |
+| 22. Progressive Web App | Presentation and web delivery | Manifest, icons, versioned static shell cache, generic offline fallback; no offline mutations |
+| 23. Public API | HTTP delivery | Versioned routes/controllers/requests/resources, Sanctum when approved, household-aware policies, existing actions and queries |
+
 ## 7. Request and data flow
 
 ### 7.1 Read flow
@@ -415,7 +463,7 @@ app/
 ├── Http/
 │   ├── Controllers/
 │   ├── Requests/
-│   └── Resources/Api/V1/                future only
+│   └── Resources/Api/V1/                Epic 23 only
 ├── Jobs/                                only when a real async task exists
 ├── Listeners/                           only with a concrete event consumer
 ├── Livewire/
@@ -619,7 +667,7 @@ A repository or gateway interface is justified only at an external boundary, for
 
 No API layer is required for the MVP. Livewire pages can render Eloquent models or purpose-built result data. RecommendationResult and IngredientMatch are domain/read result objects, not JSON API resources.
 
-If a public/mobile API is approved, add versioned controllers and Eloquent API Resources under App\Http\Resources\Api\V1, reusing the same actions and policies.
+When Epic 23's API dependency and client contract are approved, add versioned controllers and Eloquent API Resources under App\Http\Resources\Api\V1, reusing the same actions and policies.
 
 ## 10. Domain model overview
 
@@ -816,7 +864,7 @@ MySQL nullable uniqueness must be considered when implementing manual grocery it
 
 For the MVP, Ingredient, Recipe, PantryEntry, and DinnerPlan are directly user-owned. Children inherit ownership through required parents. Queries use explicit ownership constraints such as whereBelongsTo($user) or parent-scoped bindings; a hidden global user scope is avoided because it can conceal data in maintenance jobs and tests.
 
-Future shared households should add a Household and membership model, create one personal household per existing user, backfill household_id, and then update policies and queries. A polymorphic owner_type/owner_id is deliberately postponed because it would complicate every MVP query without a current shared-ownership requirement.
+Epic 15 adds Household and membership models, creates one default household per existing user, backfills household_id, and then updates policies and queries through the migration contract in Section 25.10. A polymorphic owner_type/owner_id remains rejected because it would weaken concrete foreign keys and complicate every ownership query.
 
 ### 11.6 Archive and delete behavior
 
@@ -937,9 +985,9 @@ Livewire public methods call authorize before loading or mutating protected stat
 
 Do not use an implicit global user scope on every model. Explicit owner relationships and query constraints are easier to audit, test, and later adapt to households. Do not add roles or a permissions package for the single-user MVP.
 
-### 13.3 Future shared households
+### 13.3 Post-MVP shared households
 
-Shared households are outside the MVP. If introduced, add a Household aggregate and membership/role policy, migrate existing user-owned data into one household per user, then change ownership foreign keys deliberately. Avoid a premature polymorphic owner_type/owner_id abstraction now: it would complicate every query and foreign key without serving an MVP use case.
+Shared households are outside the implemented MVP and are approved for Epic 15. Add a Household aggregate and membership/role policy, migrate existing user-owned data into one default household per user, then change ownership foreign keys through the expand/backfill/enforce sequence in Section 25.10. Avoid a polymorphic owner_type/owner_id abstraction: it would complicate every query and foreign key without improving the concrete household target.
 
 ## 14. Events, jobs, queues, and notifications
 
@@ -1213,19 +1261,27 @@ Do not cache mutable pantry availability or recommendation rankings initially. M
 
 ### 18.2 Planned seams for growth
 
-The proposed seams allow these additions without imposing them now:
+The following seams were deliberately left by the MVP. The post-MVP plan activates them only in the named epic; an earlier epic must not pre-build a later integration:
 
-| Future need | Existing seam |
+| Post-MVP need | Existing seam and activation point |
 | --- | --- |
-| Shared households | Explicit owner policies and user foreign keys can migrate to Household |
-| External recipe import | Import job maps external data into the same CreateRecipe action/value rules |
-| API/mobile client | Actions and policies remain; add versioned controllers/requests/resources |
+| Recipe favourites | Recipe list/recommendation queries can join a personal user/recipe pivot without changing Recipe ownership (Epic 10) |
+| Richer dinner history | PlannedDinner already stores terminal state, lifecycle timestamps, and immutable requirement snapshots (Epic 11) |
+| Decision mode | RecommendationResult already exposes deterministic eligibility, score, and explanations; PlanDinner remains the selection command (Epic 12) |
+| Structured dietary filters | Existing free-form Tag remains separate; recipe queries can add explicit dietary facts and reuse one eligibility specification (Epic 13) |
+| Ingredient substitutions | PlannedDinnerRequirement snapshots isolate an occurrence from its source recipe and provide a reconciliation boundary (Epic 14) |
+| Shared households | Explicit owner policies and user foreign keys can migrate to concrete Household foreign keys (Epic 15) |
 | Internationalisation | English strings are presentation-only; central formatters/config isolate Dutch-style dates/decimals for later locale preferences |
-| Nutrition/allergens | Ingredient metadata plus calculated recipe projection |
-| Expiry-aware pantry | Add pantry lot/expiry model and change allocator ordering |
-| Retail pack optimization | Add purchasing/package optimization after GroceryCalculator shortfalls |
-| Recommendation preferences | Replace/configure scoring strategy behind the focused engine |
-| Notifications | Consume committed events with queued listeners |
+| Expiry-aware pantry | Add PantryStockBatch and change allocation within a requirement from entry ID to earliest suitable expiry (Epic 16) |
+| Retail pack optimization | Extend IngredientPackage and optimize only after GroceryCalculator has produced exact shortfalls (Epic 17) |
+| Prices and budgets | Package suggestions provide the purchase basis; add Money/CostEstimate without using unknown as zero (Epic 18) |
+| External recipe import | Import drafts map reviewed external data into the same CreateRecipe action/value rules (Epic 19) |
+| AI-assisted extraction | The import review boundary accepts a validated DTO from a replaceable RecipeTextExtractor (Epic 20) |
+| Barcode scanning | IngredientPackage and pantry batch entry provide the confirmation target for a provider lookup (Epic 21) |
+| PWA/mobile delivery | Responsive Livewire pages and Vite assets allow an installable static shell without caching household responses (Epic 22) |
+| API/mobile client | Actions and policies remain; add versioned controllers/requests/resources and approved token authentication (Epic 23) |
+| Recommendation preferences | Add implemented factors through the focused engine/filter pipeline; keep hard eligibility separate from ranking |
+| Notifications | Consume committed events with queued listeners only when an epic adds an actual notification |
 | Object storage/CDN | Storage disk configuration; no direct filesystem paths in domain code |
 | Search | Begin with indexed MySQL queries, add an external index only when measured |
 
@@ -1233,7 +1289,7 @@ Adding a future seam does not mean adding an interface today. Extract an interfa
 
 ### 18.3 Deliberately postponed
 
-Postpone microservices, event sourcing, CQRS read databases, generic repositories, a service bus, a rules engine, multi-tenancy packages, Redis, search services, websocket updates, and AI recommendation infrastructure. None solves a current epic, and each adds deployment/failure modes. Reconsider only with measured scale, a team ownership boundary, offline integration needs, or requirements that the modular monolith demonstrably cannot satisfy.
+Postpone microservices, event sourcing, CQRS read databases, generic repositories, a service bus, a rules engine, a third-party multi-tenancy package, Redis, search services, websocket updates, AI recommendation/ranking, complex offline writes, automatic allergy inference, price-history analytics, and a universal integration framework. The roadmap does not require them. AI in Epic 20 is limited to reviewed recipe-text extraction; household isolation in Epic 15 remains ordinary Laravel models, policies, foreign keys, and query scopes.
 
 ## 19. Observability, logging, and operational concerns
 
@@ -1330,6 +1386,20 @@ The following decisions summarize the architecture. “MVP” is necessary to im
 | ADR-19 / MVP | Use one rolling DinnerPlan per user. Planned rows are the ordered active list; Cooked/Cancelled rows are history, and Cancelled may be restored. | Calendar weeks/named plans impose management and a current-plan selector unrelated to irregular cooking. | The plan table is a singleton aggregate and history grows under it. Reconsider multiple plans only for an approved household/calendar use case. |
 | ADR-20 / MVP | Reconcile affected reservations globally in explicit-date, position, creation order whenever supply, demand, or order changes. | Preserving old allocations violates earliest-dinner priority; manual allocation adds complex controls; queue-based reconciliation risks stale stock. | More rows are locked/rebuilt per mutation. Reconsider incremental optimization only after equivalent deterministic/concurrency tests and measured contention. |
 | ADR-21 / MVP | NonExactStatus is exactly Required or Optional. Required may create a check/missing confirmation; Optional affects neither score nor automatic grocery generation. | A free-form status is inconsistent; extra statuses duplicate the written description and add ambiguous rules. | Two states may be limiting later. Add a status only with distinct calculation/UI behaviour. |
+| ADR-22 / Post-MVP | Model favourites as a unique User–Recipe relationship. Favourite is a personal preference, survives recipe archive, and is a secondary recommendation tie-break after pantry suitability. | A Recipe boolean would leak one user's preference to another and would migrate poorly to households; a large score bonus could hide a worse pantry match. | Joining the pivot adds query/index work. Reconsider an explicit configurable preference score only after user testing. |
+| ADR-23 / Post-MVP | Extend PlannedDinner history rather than create a second history aggregate. Keep current state/timestamps on PlannedDinner and append compact lifecycle events for post-MVP transitions to preserve repeated-transition evidence. | Copying terminal dinners into another table duplicates snapshots; deriving every transition from the latest timestamps loses repeated cancel/restore cycles. | A small append-only child table adds writes. It is audit evidence, not event sourcing or the source of current state. |
+| ADR-24 / Post-MVP | Implement first-version Decision Mode as a deterministic pure selection service over current recommendation/filter results; keep exclusions and reroll seed in the Livewire session and plan through PlanDinner. | Persisted decision sessions add cleanup/privacy state; unseeded randomness is hard to explain and test; AI is unnecessary. | Refreshing the browser may end the session. Persist sessions only if product usage proves continuity or sharing is required. |
+| ADR-25 / Post-MVP | Keep free-form Tag separate from explicit structured dietary facts. Absence of a fact means unknown, never safe; hard dietary eligibility runs before recommendation scoring. | Reusing tags makes spelling/safety semantics unreliable; inferring allergy safety from incomplete ingredients creates false assurances. | Explicit unknowns reduce apparent result counts. Add ingredient-derived facts only with complete provenance and contradiction handling. |
+| ADR-26 / Post-MVP | Store a confirmed substitution on the PlannedDinnerRequirement occurrence, including the rule/ratio snapshot and effective ingredient quantity. Allocation and grocery calculations use the effective requirement; the RecipeIngredient remains unchanged. | Rewriting the recipe destroys intent; silent runtime substitution is unsafe; storing only a substitute ID cannot reproduce historical quantities. | Effective-requirement resolution adds complexity. Keep it in one resolver used by snapshots, allocation, groceries, and history. |
+| ADR-27 / Post-MVP | Introduce concrete Household ownership through an expand/backfill/enforce migration. Shared aggregates use household_id; memberships and invitations use explicit Owner/Member roles; favourites and active-household preference remain user-owned. | Polymorphic ownership weakens foreign keys; a global scope can hide cross-tenant defects; a tenancy package is unnecessary for one database/schema. | Most policies and queries must change together. Require full tenant-isolation coverage and a verified rollback/cutover plan. |
+| ADR-28 / Post-MVP | Make PantryStockBatch the stock source of truth for expiry-aware inventory and allocate reservations to batches in earliest-expiry order within the existing earliest-dinner priority. Expired or manually unavailable batches do not satisfy demand. | One aggregate PantryEntry quantity cannot express several expiry dates; a recommendation-only expiry field would not control consumption correctly. | More rows and locks are involved. Retain PantryEntry as the ingredient/representation grouping boundary and aggregate batches in bounded queries. |
+| ADR-29 / Post-MVP | Keep exact GroceryCalculator need separate from a PackagePurchaseOptimizer suggestion. The first optimizer chooses one compatible package option repeated, ordered by least excess, then fewest packages, then stable ID; manual purchase overrides are explicit. | Rounding the grocery requirement corrupts domain truth; an unbounded mixed-package/price optimizer is premature. | A mixed-size combination can sometimes waste less. Add bounded combination optimization only with explicit acceptance cases and performance limits. |
+| ADR-30 / Post-MVP | Represent prices/budgets as integer minor units plus ISO currency. A CostEstimate carries known subtotal and unknown-price item count; unknown is never zero. Initial product currency is EUR with no automatic conversion. | Floats drift; DECIMAL money arithmetic is unnecessary for EUR cents; treating missing prices as zero misleads budgets. | Minor units need currency-specific scale metadata if more currencies are added. Price history and exchange rates remain separate future features. |
+| ADR-31 / Post-MVP | Route JSON, Schema.org, and URL imports through validated import DTOs and a review draft. ConfirmRecipeImport invokes existing ingredient/recipe actions; no importer writes Recipe rows directly. | Provider-specific model writes duplicate creation rules; automatic save makes ambiguous ingredient matches unsafe. | The review draft adds a lifecycle and cleanup policy. Keep it bounded and delete abandoned drafts after the documented retention window. |
+| ADR-32 / Post-MVP | Put AI extraction behind RecipeTextExtractor and feed its structured, validated output into the same import review boundary. AI never performs measurement conversion, allocation, reservation, grocery, dietary-safety, or persistence decisions. | Provider calls in Livewire couple credentials and response shapes to the UI; direct writes let malformed/uncertain output enter the domain. | The adapter and fake add classes, justified by an unstable external boundary and deterministic tests. The application retains a non-AI import/manual path. |
+| ADR-33 / Post-MVP | Treat barcode/product data as untrusted provider suggestions. Preserve barcodes as validated strings, store confirmed household catalogue mappings, and call the normal package/batch pantry action after user review. | Provider products as canonical Ingredient rows allow remote changes to corrupt local data; numeric barcode storage loses leading zeroes. | Confirmation adds a step. Cache only provider facts with bounded TTL and never use cached household mappings across tenants. |
+| ADR-34 / Post-MVP | The first PWA caches versioned static assets and a generic offline fallback only. Authenticated HTML, Livewire traffic, API responses, recipe images requiring authorization, and household data are network-only; offline mutations are postponed. | Cache-first product responses can expose the previous household/user and require conflict resolution. | Offline functionality is limited but safe. Add data caching only with encryption, per-user cache partitioning, logout purge, and a conflict protocol. |
+| ADR-35 / Post-MVP | Add `/api/v1` as a delivery adapter over existing actions/queries using Form Requests, policies, and API Resources. Prefer Sanctum for an approved first-party/mobile token use case; identify Household in the route and authorize membership per request. | Returning Eloquent directly leaks schema; session active-household state is ambiguous for API clients; Passport is unnecessary without OAuth2 delegation. | Versioning and resource mapping add maintenance. Breaking representations require a new API version, not a database-driven accidental change. |
 
 ### 21.1 Decision ownership
 
@@ -1365,6 +1435,8 @@ These rules translate the architecture into reviewable code conventions.
 12. Deployed migrations are immutable. Use additive/compatible schema transitions and a later cleanup migration.
 13. Use Storage disks for files, config for tunable values, and environment variables only from config files.
 14. Keep calculated grocery amounts/contributions separate from temporary display overrides.
+15. Generate migrations with Artisan, keep each migration focused, separate DDL from data backfill commands, and provide a real reversible down method when reversal is safe.
+16. Mirror database defaults in model attributes, cast dates/decimals/enums explicitly, and index the actual ownership/filter/order/join paths introduced by each slice.
 
 ### 22.3 Events, jobs, API, and external boundary rules
 
@@ -1383,6 +1455,38 @@ These rules translate the architecture into reviewable code conventions.
 5. A new state, unit, conversion, or ownership rule updates tests and this architecture document.
 6. A future agent must read AGENTS.md, the relevant skill instructions, this document, and affected code before implementing an epic.
 
+### 22.5 Post-MVP ownership and filtering rules
+
+1. Until Epic 15 completes, existing user ownership is authoritative. Do not partially query household_id before the cutover contract for that slice is in place.
+2. After Epic 15, every shared route/query/action receives an explicit Household or CurrentHousehold value and proves membership; active-household session state alone never authorizes a record.
+3. A cross-household record ID must behave as not found or unauthorized consistently and must never reveal whether the record exists.
+4. Personal preferences such as favourites remain scoped by user_id plus an accessible recipe; switching households never transfers or deletes them.
+5. Apply hard eligibility filters—ownership, archive state, explicit dietary requirements, and user-selected filters—before ranking factors.
+6. Absence of a dietary fact is Unknown. UI copy and API representations must not convert Unknown into allergen-free or suitable.
+7. Every recommendation/decision factor returns structured explanation data and has a deterministic tie-break. Seeded randomness may choose among eligible results only after deterministic eligibility and scoring.
+
+### 22.6 Post-MVP inventory, purchasing, and price rules
+
+1. Dinner priority remains dated-before-undated and earliest-first. Expiry ordering chooses stock only within one dinner requirement; it never lets a later dinner take stock from an earlier dinner.
+2. Expiry is a date in the household presentation timezone. Compare dates, not UTC instants, and treat a null expiry as after every non-expired dated batch.
+3. Exact recipe need, effective substituted need, pantry reservations, grocery shortfall, suggested purchase amount, and displayed/manual purchase override are separate named values.
+4. A substitution requires explicit confirmation and a complete quantity mapping. It must never rely on an otherwise unsupported unit conversion.
+5. Package optimization receives an exact shortfall and compatible purchase options. It cannot mutate recipe, pantry, reservation, or GroceryItemContribution truth.
+6. Money uses integer minor units and a currency code. A partial estimate must expose unknown items/counts alongside the known subtotal.
+7. Budget and cost are ranking/feedback inputs after mandatory filters; they never override household isolation, dietary eligibility, or measurement compatibility.
+
+### 22.7 Post-MVP integration, API, and PWA rules
+
+1. Every external provider has a narrow contract, a Laravel HTTP-client adapter with explicit connect/request timeouts, translated failures, bounded response size, and a fake used by automated tests.
+2. URL import protects against server-side request forgery: allow only HTTP/HTTPS, reject credentials and private/reserved destinations, revalidate redirects/resolved addresses, and cap redirects, bytes, and processing time.
+3. Provider/AI output is untrusted input. Parse it into a DTO, validate it, preserve uncertainties, and require a review/confirmation action before domain persistence.
+4. No external request runs while pantry, planning, grocery, membership, or recipe-write transaction locks are held.
+5. Before the first queued integration, add and verify a supervised worker, after-commit dispatch, exponential backoff, a `retry_after` longer than every job timeout, uniqueness/idempotency where needed, explicit failed handling, provider rate limiting, failed-job monitoring, and operational runbook changes.
+6. API controllers contain no business rules and never serialize Eloquent models directly. Versioned API Resources define output, and API Form Requests define validation/authorization.
+7. API tenant context is explicit in the route or another signed/authenticated request value; browser session active-household state is not an API contract.
+8. Service workers do not cache authenticated HTML, Livewire requests, API responses, or household data in the first version. Cache names are release-versioned and old static caches are removed on activation.
+9. Provider tests prevent stray HTTP requests and cover safe retryable failures, non-retryable client errors, malformed/oversized responses, and timeout behavior without reaching the real network.
+
 Relevant framework references:
 
 - [Laravel 13 database transactions and deadlock retries](https://laravel.com/docs/13.x/database#database-transactions)
@@ -1391,13 +1495,18 @@ Relevant framework references:
 - [Laravel 13 events after commit](https://laravel.com/docs/13.x/events#dispatching-events-after-database-transactions)
 - [Laravel 13 queues](https://laravel.com/docs/13.x/queues)
 - [Laravel 13 Eloquent casts](https://laravel.com/docs/13.x/eloquent-mutators#attribute-casting)
+- [Laravel 13 scoped route-model binding](https://laravel.com/docs/13.x/routing#implicit-model-binding-scoping)
+- [Laravel 13 HTTP client timeouts, retries, and fakes](https://laravel.com/docs/13.x/http-client)
+- [Laravel 13 API routing and Sanctum installation](https://laravel.com/docs/13.x/routing#api-routes)
+- [Laravel 13 API Resources](https://laravel.com/docs/13.x/eloquent-resources)
+- [Laravel 13 rate limiting](https://laravel.com/docs/13.x/routing#rate-limiting)
 - [Livewire 4 components](https://livewire.laravel.com/docs/4.x/components), [forms](https://livewire.laravel.com/docs/4.x/forms), and [validation](https://livewire.laravel.com/docs/4.x/validation)
 
 Prefer these framework mechanisms over custom equivalents.
 
 ## 23. Suggested incremental migration or implementation plan
 
-There is no legacy Dinner Decider domain implementation to rewrite. The application is a clean Laravel/Livewire/Fortify starter, so build vertical slices while retaining its working authentication/settings code.
+Stages 0–5 record how the MVP was built from the original Laravel/Livewire/Fortify starter. Post-MVP work begins at Stage 6 and extends the implemented domain in small vertical slices. Each post-MVP epic starts with a read-only repository analysis and an approved slice plan as required by the Post-MVP Development Plan; do not implement an entire epic as one undifferentiated change.
 
 ### Stage 0 — Baseline hardening (complete)
 
@@ -1480,6 +1589,72 @@ Completed on 22 July 2026:
 
 Baseline evidence: 135 tests and 363 assertions passed against MySQL 8.4 before changes. Final automated evidence: 143 tests and 451 assertions passed including concurrency; Pint, Larastan level 7, Vite build, npm audit, platform checks, and optimized configuration passed. The final release gate remains open for the dependency update and staging/manual checks listed in `docs/mvp-release-checklist.md`; WCAG or ASVS certification is not claimed.
 
+### Stage 6 — Post-MVP quality gate (Epic 9)
+
+1. Re-run the MVP automated and manual release gates against the current dependency set.
+2. Trace each critical mutation from Livewire/Form Request through policy, action, transaction, model/service, and tests; record and remove actual duplication rather than reorganizing speculatively.
+3. Inspect MySQL constraints/indexes and use query plans for measured hot reads. Review lock order and rollback behavior for pantry, plan, cooking, and grocery actions.
+4. Exercise the nine roadmap regression scenarios, including archive/history planning, duplicate occurrences, restore, unresolved cooking, earliest-dinner allocation, grocery recalculation/check reset, unavailable staples, and manual grocery rules.
+5. Update architecture, codebase guide, release checklist, and runbook with evidence and remaining risk.
+
+Exit condition: the current suite and quality checks pass, every roadmap regression has focused coverage, and no unresolved correctness/ownership/transaction defect is knowingly carried into feature work.
+
+### Stage 7 — Everyday usability (Epics 10–12)
+
+1. Add the user-owned recipe_favourites relationship, actions, policies/scopes, catalogue/detail controls, filters, and pantry-safe recommendation tie-break.
+2. Extend the existing dinner-history surface with bounded chronological queries, recipe/date/status filters, and lifecycle evidence; continue using PlannedDinner snapshots and history-planning actions.
+3. Add a pure, seeded DecisionEngine over eligible recommendation results, Livewire exclusion/reroll state, structured explanations, and direct planning through PlanDinner.
+
+Exit condition: personal favourites are isolated, dinner history remains accurate after recipe/lifecycle changes, and Decision Mode is deterministic, explainable, and creates an ordinary planned dinner without AI.
+
+### Stage 8 — Recipe discovery and flexibility (Epics 13–14)
+
+1. Reuse Tag for free-form organization and add explicit structured dietary facts with Unknown semantics.
+2. Centralize catalogue, recommendation, and Decision Mode filtering in one eligibility/query contract with visible exclusion explanations.
+3. Add general and recipe-specific substitution rules, explicit confirmation, and occurrence-level substitution snapshots.
+4. Route substituted effective requirements through the existing full reservation reconciliation and grocery regeneration path.
+
+Exit condition: combined filters are predictable and make no unsupported safety claims; a substitution never rewrites the recipe and is preserved in planning/history with correct quantities.
+
+### Stage 9 — Shared households (Epic 15)
+
+1. Add households, Owner/Member memberships, registered-user invitations, and a default household for every existing user.
+2. Add an explicit active-household context and switching UI, while policies and queries independently prove membership.
+3. Expand shared aggregate tables with nullable household_id, backfill and verify counts, switch reads/writes aggregate by aggregate, then enforce non-null foreign keys/indexes and retire obsolete user ownership only in a later compatible migration.
+4. Migrate Ingredients/Packages/Tags/Recipes, Pantry/Batches, DinnerPlan/PlannedDinner/Reservations, and GroceryList/Items to household ownership in dependency order.
+5. Keep favourites and personal preferences user-owned; add invitations and locked membership/last-owner transitions.
+
+Exit condition: all existing data belongs to a default household, users may switch among multiple isolated households, and cross-household feature/API-style tests cannot observe or mutate foreign data.
+
+### Stage 10 — Smarter pantry and purchasing (Epics 16–18)
+
+1. Introduce PantryStockBatch, backfill one batch per current PantryEntry, move reservations/consumption to batches, and prove earliest-dinner then earliest-expiry allocation under concurrency.
+2. Extend IngredientPackage into compatible retail purchase options and add deterministic package suggestions after exact grocery shortfall calculation.
+3. Add explicit manual purchase overrides without changing exact need or generated contributions.
+4. Add optional EUR minor-unit package prices, partial CostEstimate results, grocery totals, recipe additional-cost estimates, and an optional dinner-plan budget.
+5. Add expiry and cost factors to recommendations only after their source data exists, with configured weights and structured explanations.
+
+Exit condition: batch truth preserves all migrated stock, expiry affects allocation correctly, package suggestions recalculate without corrupting exact requirements, and unknown prices remain visibly unknown.
+
+### Stage 11 — Reviewed recipe ingestion (Epics 19–20)
+
+1. Define import DTOs/drafts and ingredient match/ambiguity results.
+2. Implement reviewed JSON import first, then Schema.org extraction and hardened URL fetching.
+3. Confirm through the existing Ingredient/Recipe actions; never allow an importer to write the aggregate directly.
+4. Add RecipeTextExtractor with a fake, then one approved provider adapter, structured response validation, uncertainty display, timeout/cost/privacy controls, and the same review screen.
+5. Enable queue infrastructure only if measured/provider latency requires it, completing the worker/monitoring/runbook gate first.
+
+Exit condition: every imported or AI-extracted recipe is reviewed, invalid or ambiguous data cannot enter the domain, and manual/JSON import still works when AI is unavailable.
+
+### Stage 12 — Product expansion (Epics 21–23)
+
+1. Add confirmed barcode-to-household ingredient/package mappings and a provider adapter, followed by optional camera scanning; finish pantry entry through the normal batch action.
+2. Complete a mobile usability/accessibility pass, then add manifest/icons, a versioned static asset service worker, install/update tests, and a generic offline fallback without offline household data.
+3. Approve and install API token authentication, add routes/api.php with `/api/v1/households/{household}`, and expose read/write slices through Form Requests, policies, actions/queries, and API Resources.
+4. Add per-token/user rate limits, consistent errors/pagination/filtering, feature/contract tests, and API documentation.
+
+Exit condition: unknown provider/barcode/offline states retain safe manual fallbacks, the app is installable without caching private responses, and every versioned API endpoint enforces household membership while matching web action behavior.
+
 Avoid creating every proposed folder up front. A directory appears with its first concrete class. Existing settings SFCs and starter tests may migrate toward these conventions only when touched; no big-bang rewrite is warranted.
 
 ## 24. Open questions and assumptions
@@ -1518,7 +1693,7 @@ The previously open product questions are resolved and are authoritative for MVP
 
 None of the original 15 product questions remains open. The following narrow implementation assumptions remain documented:
 
-- The existing repository already requires accounts, so MVP ownership is per User. Household ownership remains a future migration.
+- The existing repository already requires accounts, so ownership remains per User until the explicit Epic 15 household migration completes.
 - Manually removing an unprocessed Planned dinner deletes that occurrence; cancelling retains it in history. If product later wants removed-item history, use Cancelled rather than another status.
 - Europe/Amsterdam is the presentation timezone implied by the Netherlands-friendly convention; timestamps remain UTC in storage.
 - The initial incompatible-measurement penalty is 10 points in config/recommendations.php and may be tuned with the other accepted weights after user testing.
@@ -1526,9 +1701,9 @@ None of the original 15 product questions remains open. The following narrow imp
 - Optional images use the public Storage disk through `RecipeImageStorage`. JPEG/PNG/WebP uploads are content/MIME/dimension verified; security re-encoding, resizing, responsive derivatives, and advanced retention remain postponed until GD is approved as a required platform extension.
 - Basic GroceryItem change timestamps are operational/UI state, not a user-facing shopping-history feature.
 
-### 24.4 Epic support verification
+### 24.4 MVP epic support verification
 
-The final architecture maps every epic to concrete owners and workflows:
+The implemented MVP architecture maps Epics 1–8 to concrete owners and workflows:
 
 - Ingredient/measurement: Ingredient, IngredientPackage, Quantity, ingredient-specific count compatibility, package/metric display, decimal persistence.
 - Recipe catalogue: minimally required Recipe aggregate, nullable metadata, ordered ingredients/steps, image placeholder, actions/policies/archive/history snapshots.
@@ -1540,3 +1715,508 @@ The final architecture maps every epic to concrete owners and workflows:
 - Grocery list: stable generated keys/contributions, temporary overrides, increase-sensitive checking, manual/completed state, transactional regeneration without shopping history.
 
 No epic requires a microservice, generic repository, event-sourced aggregate, or asynchronous core workflow.
+
+### 24.5 Resolved post-MVP architecture decisions
+
+These decisions resolve implementation shape while leaving product tuning to the epic-level plan:
+
+| Decision | Architectural consequence |
+| --- | --- |
+| Favourite ownership | A unique User–Recipe pivot; archive does not remove it; household switching does not transfer it. |
+| Favourite ranking | Pantry score and mismatch counts remain primary; favourite is a deterministic secondary tie-break unless later user testing approves a bounded configured weight. |
+| Dinner history baseline | Reuse PlannedDinner and its snapshots. Add filtered queries and compact lifecycle events only to preserve repeated transition evidence. |
+| Decision-session lifetime | First version is Livewire/session scoped with a stable seed and no decision-session table. |
+| Dietary truth | Free-form tags stay separate. Structured facts are explicit Present/Absent; a missing row is Unknown and cannot justify a safety claim. |
+| Substitution truth | A user confirms a quantity mapping; the occurrence snapshots it; effective requirements drive reservations/groceries while the recipe stays unchanged. |
+| Shared ownership | Household owns shared catalogue, pantry, plan, reservation, and grocery aggregates; User owns favourites, memberships, invitation response, and active-household preference. |
+| Household roles | Owner and Member only. The final owner cannot leave or be removed without an atomic ownership transfer. |
+| Expiry allocation | Earliest dinner remains primary; the allocator uses earliest suitable non-expired batch within each requirement. |
+| Retail package optimization | Optimize after exact shortfall; first version repeats one compatible option and ranks least excess, fewest packages, then stable ID. |
+| Money | EUR integer cents initially; partial estimates expose unknown items and never substitute zero. |
+| Import confirmation | Every import becomes a validated review draft and is saved through existing creation actions only after confirmation. |
+| AI scope | AI extracts reviewed structured recipe data only and is never part of measurement, dietary safety, allocation, reservation, grocery, or persistence decisions. |
+| Barcode scope | Provider data is a suggestion; confirmed household mappings and ordinary package/batch pantry actions are authoritative. |
+| PWA scope | Installable static shell and generic fallback; no private response cache or offline mutation in the first version. |
+| API shape | `/api/v1/households/{household}` delivery layer, explicit membership authorization, API Resources, and approved Sanctum token authentication for first-party/mobile use. |
+
+### 24.6 Product and provider decisions to confirm during the relevant epic
+
+These do not block the first vertical slice, but they must be resolved and recorded before the affected behavior ships:
+
+- Epic 13: final structured dietary vocabulary, filter labels, and safety disclaimer copy.
+- Epic 16: the configurable “expiring soon” threshold and whether users may mark a batch unavailable for reasons beyond expiry.
+- Epic 17: whether a later optimizer may combine different package sizes; the first version deliberately chooses one repeated option.
+- Epic 18: who enters package prices, what “budget” period the rolling plan presents, and whether any currency beyond EUR is required.
+- Epic 19: import-draft retention duration and whether URL import is open to all public HTTP(S) sites or an allow-list.
+- Epic 20: provider, data-processing terms, regional/privacy requirements, per-user limits, cost ceiling, and whether extraction is synchronous or queued.
+- Epic 21: product-data provider, supported GTIN formats, cache lifetime, and camera/browser support matrix.
+- Epic 22: final app name, icon artwork, theme colors, and install/update acceptance devices.
+- Epic 23: API audience, token abilities/lifetime/revocation UX, per-endpoint rate limits, and published support/deprecation policy.
+
+## 25. Post-MVP architecture
+
+This section is the implementation bridge between the completed MVP and `Dinner Decider Post-MVP Development Plan.docx`. The DOCX remains authoritative for product goals, functionality, and completion criteria; this section supplies repository-specific ownership, persistence, workflows, boundaries, and verification.
+
+### 25.1 Dependency and delivery sequence
+
+~~~mermaid
+flowchart LR
+    E9["Epic 9<br/>quality gate"] --> E10["Epic 10<br/>favourites"]
+    E9 --> E11["Epic 11<br/>history"]
+    E10 --> E12["Epic 12<br/>decision mode"]
+    E11 --> E12
+    E12 --> E13["Epic 13<br/>dietary filters"]
+    E13 --> E14["Epic 14<br/>substitutions"]
+    E14 --> E15["Epic 15<br/>households"]
+    E15 --> E16["Epic 16<br/>expiry batches"]
+    E16 --> E17["Epic 17<br/>retail packages"]
+    E17 --> E18["Epic 18<br/>prices/budget"]
+    E15 --> E19["Epic 19<br/>recipe import"]
+    E19 --> E20["Epic 20<br/>AI extraction"]
+    E17 --> E21["Epic 21<br/>barcodes"]
+    E15 --> E22["Epic 22<br/>PWA"]
+    E15 --> E23["Epic 23<br/>public API"]
+~~~
+
+The recommended epic order remains the default because later features reuse earlier truth. Within an epic, implement one end-to-end slice at a time. A later epic may begin only when its actual dependencies are stable; independent presentation work such as the mobile audit may run earlier, but must not introduce later domain state.
+
+### 25.2 Target module map
+
+The application remains one Laravel modular monolith and one MySQL database. Add feature namespaces only as their first classes arrive:
+
+| Capability | Target owners | Dependency rule |
+| --- | --- | --- |
+| Personal preferences | App\Actions\Favourites, User/Recipe relationship | May read accessible recipes; never owns or mutates a household recipe |
+| Decision Mode | App\Queries\GetDecisionCandidates, App\Services\Decisions\DecisionEngine, App\Data\Decisions | Reads filters/recommendations/history/favourites; selection delegates to PlanDinner |
+| Dietary facts/filtering | Recipe child model/enum plus App\Queries recipe eligibility | Filters catalogue/recommendations/decisions before scoring |
+| Substitutions | App\Actions\Substitutions, App\Services\Substitutions, rule/snapshot models | Recipe rule definition is separate from occurrence application; planning remains reconciliation owner |
+| Households | App\Actions\Households, models/policies/middleware, CurrentHousehold | Establishes owner context; other modules must not reimplement membership rules |
+| Pantry batches | PantryStockBatch, batch-aware AvailablePantry/PantryAllocator | Owns stock/expiry truth; planning owns reservation orchestration |
+| Purchasing and costs | App\Services\Purchasing, purchase/cost data objects | Consumes exact grocery shortfalls; never changes recipe need |
+| Imports | App\Actions\Imports, App\Data\Imports, App\Services\Imports | Produces reviewed drafts; confirmation delegates to Ingredients/Recipes |
+| External integrations | App\Integrations\<ProviderOrCapability> contracts/adapters | No Eloquent business orchestration; returns validated provider-neutral DTOs |
+| API | App\Http\Controllers\Api\V1, App\Http\Requests\Api\V1, App\Http\Resources\Api\V1, and routes/api.php | Delivery adapter over the same policies/actions/queries |
+| PWA | Vite-managed assets, manifest, service worker, offline fallback | Presentation-only first version; no alternate domain or offline database |
+
+Do not add a generic `PreferencesService`, `IntegrationManager`, `TenantRepository`, or `ApiService`. Purpose-named actions/services and Laravel's container are sufficient.
+
+### 25.3 Target ownership and data relationships
+
+The post-MVP target uses concrete relationships. This is the destination after the household and batch migrations; it is not permission to create all tables during an earlier epic.
+
+~~~mermaid
+erDiagram
+    USER ||--o{ HOUSEHOLD_MEMBERSHIP : has
+    HOUSEHOLD ||--o{ HOUSEHOLD_MEMBERSHIP : has
+    HOUSEHOLD ||--o{ HOUSEHOLD_INVITATION : issues
+    USER ||--o{ HOUSEHOLD_INVITATION : receives
+
+    HOUSEHOLD ||--o{ INGREDIENT : owns
+    HOUSEHOLD ||--o{ RECIPE : owns
+    USER ||--o{ RECIPE_FAVOURITE : marks
+    RECIPE ||--o{ RECIPE_FAVOURITE : receives
+    RECIPE ||--o{ RECIPE_DIETARY_FACT : declares
+    RECIPE ||--o{ INGREDIENT_SUBSTITUTION : scopes
+    INGREDIENT ||--o{ INGREDIENT_SUBSTITUTION : participates
+
+    HOUSEHOLD ||--o{ PANTRY_ENTRY : owns
+    PANTRY_ENTRY ||--o{ PANTRY_STOCK_BATCH : groups
+    PANTRY_STOCK_BATCH ||--o{ INGREDIENT_RESERVATION : supplies
+
+    HOUSEHOLD ||--|| DINNER_PLAN : has
+    DINNER_PLAN ||--o{ PLANNED_DINNER : contains
+    PLANNED_DINNER ||--o{ PLANNED_DINNER_STATUS_EVENT : records
+    PLANNED_DINNER ||--o{ PLANNED_DINNER_REQUIREMENT : snapshots
+    PLANNED_DINNER_REQUIREMENT ||--o| PLANNED_DINNER_SUBSTITUTION : applies
+
+    DINNER_PLAN ||--|| GROCERY_LIST : generates
+    GROCERY_LIST ||--o{ GROCERY_ITEM : contains
+    INGREDIENT_PACKAGE ||--o{ GROCERY_ITEM : suggests_or_overrides
+
+    HOUSEHOLD ||--o{ RECIPE_IMPORT_DRAFT : reviews
+    HOUSEHOLD ||--o{ PRODUCT_BARCODE_MAPPING : confirms
+~~~
+
+Child ownership continues to flow through aggregate parents. Direct household_id columns belong on shared aggregate roots and high-volume query roots where they enforce or materially simplify isolation; do not duplicate household_id on every child without a query/constraint reason.
+
+### 25.4 Epic 9 — MVP Quality and Architecture Review
+
+Epic 9 is a gate, not a redesign epic. Stage 5 already added release hardening and broad evidence, so begin from the current suite and `docs/mvp-release-checklist.md`.
+
+Required review:
+
+1. Inventory each Livewire mutation and confirm it validates, authorizes, and calls one top-level action.
+2. Trace pantry/plan/grocery actions and confirm the single `ReconcilePlanReservations` and `RegenerateGroceryList` exits remain authoritative.
+3. Inspect MySQL migrations for foreign keys, uniqueness, check constraints, and indexes that match real filters/orderings. Use `EXPLAIN` for a measured query before adding an index.
+4. Confirm every multi-record invariant uses one transaction and every competing inventory path locks the rolling plan/affected rows in stable order.
+5. Run focused tests for all nine scenarios in the post-MVP plan and add regression coverage only where an observable gap exists.
+6. Compare code, this architecture, `docs/codebase-guide.md`, release checklist, and runbook; update inaccuracies in place.
+
+Outputs are evidence, focused fixes, and documentation updates. Do not create base classes, repositories, events, or folders merely to make the tree look more symmetrical.
+
+Minimum verification includes the full existing suite, Pint, Larastan, Vite build, dependency/platform checks, MySQL concurrency tests, query ceilings, and the still-open staging/manual release checks. Any bug fix receives a failing regression test first.
+
+### 25.5 Epic 10 — Recipe Favourites
+
+**Current baseline:** Recipe is user-owned, has active/archive scopes, and is loaded by catalogue, detail, recommendation, and planning flows. There is no favourite state.
+
+**Persistence:**
+
+- Add `recipe_favourites` with user_id, recipe_id, and timestamps.
+- Enforce unique user_id + recipe_id and index recipe_id for reverse cleanup/querying.
+- Cascade from User and Recipe. Archiving does not delete the Recipe row or pivot.
+- Use `belongsToMany` unless pivot behavior later justifies a RecipeFavourite model.
+
+**Application and UI:**
+
+- Add `AddRecipeFavourite` and `RemoveRecipeFavourite` idempotent actions under App\Actions\Favourites.
+- Before households, an accessible recipe is owned by the same user. After Epic 15, accessibility means current household membership while the pivot remains user-owned.
+- Add favourite controls to recipe cards/detail, an indexed catalogue filter, and eager-loaded/exists-select state without per-card queries.
+- `GetPantryAwareRecommendations` may expose `is_favourite`. Sort pantry score and missing/incompatible/partial counts first, then favourite, then the existing name/ID tie-break. Do not alter the accepted Q/F/P/M/I score in this slice.
+
+**Required tests:** add/remove idempotency, owner/foreign user denial, cross-user isolation, archive preservation, catalogue filter query bound, recommendation primary pantry ordering, and post-household accessible/inaccessible recipe behavior when Epic 15 lands.
+
+### 25.6 Epic 11 — Cooking and Dinner History
+
+**Current baseline:** PlannedDinner already distinguishes Planned/Cooked/Cancelled, stores cooked_at/cancelled_at/restored_at, snapshots recipe/servings/requirements, supports archived/history planning, and keeps Cooked terminal. Preserve it.
+
+**Persistence delta:**
+
+- Add `planned_dinner_status_events` only for durable repeated-transition evidence: planned_dinner_id, event_type (`Planned`, `Cancelled`, `Restored`, `Cooked`), from_status nullable, to_status, occurred_at, actor_user_id nullable, and timestamps.
+- Index planned_dinner_id + occurred_at and actor_user_id. Events cascade with the occurrence and are not an event-sourced current-state mechanism.
+- Backfill the best reconstructable events from created_at/cancelled_at/restored_at/cooked_at. Mark backfilled provenance if the UI or support tooling must distinguish reconstructed events.
+
+**Application and UI:**
+
+- Append the event in the same transaction as Plan/Cancel/Restore/Cook. Current PlannedDinner status/timestamps remain the source of current state.
+- Add `GetDinnerHistory` as a bounded, paginated query ordered by effective terminal/event time descending with stable ID tie-break.
+- Filter by owned/accessibly scoped recipe, snapshot recipe name when the source is gone, terminal status, and inclusive household-local date range converted to UTC boundaries.
+- Reuse `PlanDinnerFromHistory`; never restore old reservations or grocery state.
+- Recipe edits/archive/deletion must not change historical name, servings, requirement, substitution, or unresolved-cooking snapshots.
+
+**Required tests:** chronological ordering, date boundary/DST behavior, recipe/status filters, repeated cancel/restore evidence, archived/deleted/edited recipes, historical servings, replan independence, other-owner/household isolation, and bounded pagination queries.
+
+### 25.7 Epic 12 — Decision Mode
+
+Decision Mode is an explainable selection layer, not a second recommendation or planning system.
+
+**First-version contract:**
+
+- `GetDecisionCandidates` reuses active-recipe eligibility, selected filters, `GetPantryAwareRecommendations`, favourites, and dinner history factors that already exist.
+- Pure `DecisionEngine` accepts candidate result data, a stable opaque seed, round number, excluded recipe IDs, and a requested result limit. It returns `DecisionCandidate` objects with factor explanations.
+- A Livewire page stores only seed/session token, round, active filters, and excluded IDs. No decision-session table is created initially.
+- Seeded ordering is reproducible for the same input/version. Reroll increments the round; exclusion affects only the session and never changes Recipe.
+- `PlanDecisionChoice` or the page re-runs owner/household, archive, filter, and candidate eligibility before delegating to `PlanDinner`. The planning transaction rechecks pantry truth as usual.
+
+Pantry suitability remains the primary factor. Favourite and time-since-last-cooked may refine eligible candidates only because Epics 10 and 11 exist. Dietary, expiry, and cost factors join only after Epics 13, 16, and 18; missing factors contribute no invented default. “Random” selection chooses from the already eligible/scored pool and retains the seed/explanation.
+
+**Required tests:** same seed/input gives the same candidates, reroll changes ordering deterministically, exclusions are session-only, archived/foreign/filtered recipes cannot be selected, explanations match factors, empty/small pools degrade clearly, duplicate occurrences remain allowed through PlanDinner, and direct planning produces ordinary snapshots/reservations/groceries.
+
+### 25.8 Epic 13 — Recipe Tags and Dietary Filters
+
+**Current baseline:** Tag, recipe_tag, RecipeCategory, and category_recipe already exist. Reuse their owner normalization, forms, filters, and eager-loading patterns.
+
+**Structured facts:**
+
+- Add `recipe_dietary_facts` with recipe_id, code, state, declared_by_user_id nullable, and timestamps; unique recipe_id + code.
+- Use code-governed enums such as `DietaryFactCode` and `DietaryFactState::Present|Absent`. A missing row is `Unknown`; do not persist an Unknown row.
+- Initial codes may include Vegetarian, Vegan, Pescatarian, ContainsDairy, ContainsGluten, and ContainsNuts once the Epic 13 vocabulary is approved.
+- Facts are explicit recipe declarations. Do not infer them from incomplete ingredients or from free-form tags.
+
+**Filtering:**
+
+- Introduce one immutable `RecipeEligibilityFilter` data object used by catalogue, recommendations, and Decision Mode.
+- Tags may use match-any or match-all only when the UI labels the mode. Structured positive diets require explicit Present. A “without X” safety-sensitive filter requires explicit Absent for `ContainsX`; Unknown is excluded and explained.
+- The shared query applies owner/household scope, active/archive state, tag/fact existence filters, eager loading, explicit ordering, and pagination. Ranking occurs only after eligibility.
+- Result objects include active filters and structured exclusion reasons; UI must not label Unknown as allergen-free.
+
+**Required tests:** multiple tag/fact combinations, match mode, Present/Absent/Unknown, contradictory/duplicate input rejection, archive behavior, cross-owner/household isolation, consistent results across catalogue/recommendations/Decision Mode, explanations, and query ceilings.
+
+### 25.9 Epic 14 — Ingredient Substitutions
+
+A substitution is a user-authored rule and an explicitly selected occurrence fact. It is never an automatic alias or conversion.
+
+**Rule persistence:**
+
+- Add `ingredient_substitutions` with initial user_id ownership (migrated to household_id in Epic 15), nullable recipe_id for recipe-specific precedence, original_ingredient_id, substitute_ingredient_id, source amount/unit/normalized metadata, replacement amount/unit/normalized metadata, note, is_active, and timestamps.
+- Both ingredients and an optional recipe must belong to the same current owner. Original and replacement ingredients must differ.
+- Multiple alternatives are allowed. Recipe-specific active rules are offered before general active rules; stable name/ID order resolves display ties.
+- The source and replacement sides are independently valid exact Quantities. Their explicit ratio is allowed to bridge different ingredients/groups; UnitConverter must not invent a conversion between those groups.
+
+**Occurrence persistence:**
+
+- Add one nullable `planned_dinner_substitutions` row per PlannedDinnerRequirement with a unique requirement foreign key.
+- Snapshot the selected rule ID nullable-on-delete, original/replacement ingredient names and IDs, both ratio sides, calculated effective amount/unit/normalized amount/compatibility key, confirmation actor, and timestamp.
+- The existing requirement remains the source-recipe snapshot. A single `EffectiveDinnerRequirementResolver` returns original values when no substitution exists and snapshot replacement values when it does.
+
+**Workflow:**
+
+1. `ApplyDinnerSubstitution` authorizes and locks the plan, Planned occurrence, requirement, affected pantry batches/entries, and reservations.
+2. It requires Planned status and an explicit selected rule or fully validated ad-hoc mapping.
+3. `SubstitutionCalculator` calculates `original scaled amount ÷ rule source amount × rule replacement amount` with BCMath and rejects non-positive/overflowing results.
+4. It writes the occurrence snapshot, runs full reservation reconciliation, and regenerates groceries in the same transaction.
+5. `RemoveDinnerSubstitution` restores the effective original requirement and runs the same reconciliation.
+6. Cooking/history reads the stored occurrence snapshot. Later edits/deactivation/deletion of the reusable rule do not rewrite it.
+
+The first slice supports exact measurable requirements only. Non-exact rows require a separate explicit product rule and must not acquire an invented amount. Unsupported package/count/mass/volume mappings fail with a clear validation/domain error unless the substitution rule itself supplies two valid exact ratio sides.
+
+**Required tests:** general versus recipe-specific options, explicit confirmation, decimal ratio/rounding, cross-group explicit mapping, unsupported/incomplete mapping, recipe immutability, apply/remove reallocation, grocery changes/check reset, rollback, concurrent change/cook protection, history retention after rule/recipe changes, and owner/household isolation.
+
+### 25.10 Epic 15 — Shared Households
+
+Epic 15 is the only ownership migration. It must be implemented as several deployable slices; do not mix all schema changes, backfill, policy rewrites, and invitation UI into one migration or release.
+
+**Foundation schema:**
+
+| Table/column | Contract |
+| --- | --- |
+| households | id, name, timestamps; the shared aggregate owner |
+| household_user | household_id, user_id, role Owner/Member, joined_at, timestamps; unique household_id + user_id; indexes by user and household/role |
+| household_invitations | household_id, invited_user_id, invited_by_user_id, status Pending/Accepted/Declined/Revoked, expires_at nullable, responded_at nullable, timestamps; unique household + invited user with row reuse for a later invitation |
+| users.active_household_id | Nullable during expansion, then points to a household of which the user is a member; deleting a household clears/replaces it through an action |
+
+Registered users are invited by user identity; do not store a second unverified email identity in the first version. Accepting an invitation creates the membership and marks the invitation accepted atomically. Notification delivery may be added after the membership/invitation domain works and the queue gate is satisfied; it is queued after commit and never determines whether the invitation exists.
+
+**Target ownership:**
+
+- Household directly owns Ingredient, Recipe, RecipeCategory, Tag, PantryEntry, and DinnerPlan.
+- IngredientAlias/IngredientPackage, recipe children/dietary facts, pantry batches, planned dinners/requirements/reservations, and grocery lists/items inherit through their required parents.
+- Recipe favourites remain user-owned and reference accessible household recipes.
+- Ingredient substitution rules become household-owned because they affect shared pantry/plan calculations.
+- Import drafts and barcode mappings created after Epic 15 are household-owned and record the initiating user separately.
+
+**Active context:**
+
+- Add a request-scoped `CurrentHousehold` value/service and `EnsureActiveHousehold` middleware. Resolve the selected ID from the authenticated user's session/preference only after verifying membership.
+- `SwitchHousehold` authorizes membership, updates active_household_id/session together, and redirects to an owned-safe landing page.
+- Add household_id to log/queue Context for observability/propagation, but never use log Context as authorization.
+- Policies and actions receive User plus Household/owned model and independently prove membership/role. Queries explicitly constrain the owner; avoid a hidden global tenant scope.
+- Cache keys, unique constraints, route bindings, validation existence rules, and job payloads include household identity where relevant.
+
+**Migration sequence:**
+
+1. Create household/membership tables and nullable active/household foreign keys without changing current reads.
+2. Idempotently create one default household and Owner membership per existing user. Backfill every directly owned root from its current user_id; children follow required parents.
+3. Verify counts, ownership consistency, unique-name collisions, orphans, and active-household membership before switching application reads.
+4. Deploy a compatibility slice that writes both legacy user_id and household_id where both remain, and reads by explicit household context feature by feature.
+5. Replace per-user unique/index contracts with household equivalents and make household_id non-null only after all rows and code paths are verified.
+6. Remove obsolete shared-root user_id columns and compatibility writes in a later cleanup migration, not the cutover migration.
+
+Each deployment step needs a rollback strategy that preserves ownership data. For large tables, backfill in stable primary-key chunks through an idempotent command/job only after worker/operations readiness; for the current MVP-sized database, a bounded deployment command is still preferable to opaque model events inside DDL.
+
+**Membership invariants:**
+
+- Every user has at least one membership after backfill; users may belong to several households.
+- Only Owner may invite/remove/transfer ownership. Member may leave.
+- Removing a member never deletes their account or personal favourites.
+- Lock the Household and its Owner membership rows for remove/leave/role changes. The last Owner cannot leave, be removed, or be demoted in a competing request.
+- Ownership transfer is one transaction; if no transfer UI is approved, require promotion of another member before the current final Owner can leave.
+- Deleting a household is not part of the first slice and must not be inferred from Owner permissions.
+
+**Required tests:** exact data-backfill preservation, default/active household creation, switching, invite lifecycle/duplicate prevention, role policies, concurrent final-owner operations, every shared feature under two households, foreign IDs in validation/routes/actions, favourite personal behavior, cache/query isolation, and queued job context if queues are active. Add a reusable tenant-isolation data provider but keep feature assertions in the owning module.
+
+### 25.11 Epic 16 — Pantry Expiry Dates
+
+Expiry requires stock lots. `PantryEntry` remains the household ingredient/representation grouping record; `PantryStockBatch` becomes the authoritative quantity record beneath it.
+
+**Schema transition:**
+
+- Add `pantry_stock_batches`: pantry_entry_id, total_normalized_amount DECIMAL(18,6), expires_on nullable DATE, is_available boolean default true, acquired_at nullable immutable timestamp/date only if the UI needs it, and timestamps.
+- Add indexes supporting pantry_entry_id + is_available + expires_on + id and household expiry views through the PantryEntry parent.
+- Add nullable pantry_stock_batch_id to ingredient_reservations, backfill one batch for every existing PantryEntry and connect every reservation to that batch.
+- During transition, update the current PantryEntry total atomically as a compatibility cache. Once every read/write uses batch sums and invariants are proven, remove or explicitly document the cached total; do not retain two unexplained writable truths.
+- Final IngredientReservation ownership is through PantryStockBatch → PantryEntry. Remove the redundant pantry_entry_id only in a later compatible cleanup if query evidence does not justify retaining it as a checked denormalization.
+
+**Availability and ordering:**
+
+- A batch is usable only when is_available is true, the parent Ingredient is_currently_available is true, and expires_on is null or on/after the household-local current date.
+- “Expiring soon” is a configurable date threshold used for display/scoring; it is not a persisted status and requires no scheduler to become correct.
+- Preserve dinner requirement priority first. For each requirement, choose compatible usable batches by expires_on ascending with null last, then exact/native representation preference if still relevant, then batch ID.
+- Expired batches remain visible/filterable and never satisfy recommendation, reservation, grocery coverage, or cooking. Deletion/adjustment follows the same confirmed reconciliation rules as current pantry reductions.
+- Cooking deducts the exact reserved amount from each locked batch once. Zero batches may be removed only if no retained trace requires them; dinner history remains accurate through requirement/substitution snapshots rather than stock rows.
+
+**Recommendation/UI delta:**
+
+- `AvailablePantry` aggregates batch totals minus batch reservations in bounded queries.
+- Pantry views group batches by entry/ingredient while showing individual expiry and availability controls and filters for expired, expiring, no-expiry, and unavailable.
+- Add an expiring-stock factor to RecommendationEngine only after batch truth exists. It remains subordinate to hard eligibility and includes the specific usable amount/date in the explanation.
+
+**Required tests:** one-entry/multiple-expiry batches, null expiry last, expired/unavailable/masked ingredient behavior, household-local date and DST boundary, earliest dinner before earliest expiry, partial multi-batch reservations, stock update/delete reconciliation, exactly-once multi-batch cooking, concurrent allocation, migration/backfill totals, recommendation explanation, filters, and bounded query counts.
+
+### 25.12 Epic 17 — Package Sizes and Supermarket Rounding
+
+**Current baseline:** IngredientPackage already stores package type/label and optional exact metric content, and recipes/pantry preserve package context. Extend this model; do not add a competing PackageSize table.
+
+**Persistence delta:**
+
+- Add package purchase-option state only where needed, such as is_purchase_option/is_active and a retail display label. Existing positive known content remains the calculation basis.
+- Add separate GroceryItem purchase-projection fields or a focused child model for suggested package ID/count/purchase total and manual package ID/count/overridden_at. Choose the child model only if multiple purchase lines are approved later.
+- A manual purchase override is not the existing temporary generated-quantity override. It stays visible across regeneration while its package remains compatible, and the UI marks whether it covers, exactly meets, or falls short of the current exact need.
+
+**Calculation:**
+
+- Pure `PackagePurchaseOptimizer` accepts one exact GroceryCalculationItem shortfall and active compatible IngredientPackage options with known positive contents.
+- For each option, calculate integer `ceil(required normalized amount ÷ package content)` without float. Rank by smallest non-negative excess, then fewest packages, then stable package ID.
+- First version selects one package option repeated; it does not mix package definitions. An exact unknown-package requirement may suggest counts only of that identical package definition.
+- If no compatible known option exists, return `NoSuggestion` with a reason and preserve exact need/manual entry.
+- `RegenerateGroceryList` calculates exact shortfall and contributions first, then attaches/recomputes the purchase suggestion. Suggested/manual purchased quantities never flow back into RecipeIngredient, PlannedDinnerRequirement, IngredientReservation, or calculated GroceryItem amount.
+
+**Required tests:** the 650 g/500 g → 2/1,000 g example, exact divisibility, decimal boundaries, multiple options/tie-breaks, inactive/unknown/incompatible packages, count and package identity behavior, no mass-volume conversion, manual override preservation/invalidations, requirement increase/decrease, checked-state rules based on exact need, and performance bounds.
+
+### 25.13 Epic 18 — Grocery Prices and Budgeting
+
+**Money contract:**
+
+- Add immutable `Money` with integer minor amount and ISO 4217 currency code; add/subtract/compare only the same currency.
+- Add `CostEstimate` with known subtotal, unknown item count/identifiers, and completeness state. It never returns a deceptively complete zero.
+- Initial configured/persisted currency is EUR and minor scale is two. Currency conversion and price history are outside this epic.
+
+**Persistence and calculation:**
+
+- Add nullable price_minor, currency_code, and price_updated_at to active purchase options, scoped with their household-owned IngredientPackage after Epic 15.
+- Add optional budget_minor/budget_currency to DinnerPlan. The first UI treats it as the budget for the current rolling active plan/grocery projection; any weekly/monthly semantics require a separate product decision.
+- Calculate GroceryItem estimate from the effective suggested/manual purchase package count, not from a fractional exact need that cannot be bought.
+- Calculate GroceryList and recipe-additional-cost estimates by summing known purchase estimates and carrying unknown options separately. Shared package purchases across grouped exact grocery need are priced once at the grocery-item level.
+- Recommendation/Decision cost uses the recipe's additional pantry shortfall, package optimizer, and current household prices. Apply mandatory dietary filters first, keep pantry suitability dominant, and expose known subtotal plus unknown count in every explanation.
+
+Persist price inputs and budget, not every derived estimate, unless measured read cost or audit requirements later justify a versioned projection. Any persisted estimate includes an input/version timestamp and is never historical price truth.
+
+**Required tests:** integer arithmetic, zero-priced versus missing price, mixed known/unknown totals, currency mismatch rejection, package/manual override effects, grouped purchase pricing, recipe additional cost, budget boundary, diet-before-budget eligibility, explainable ranking, household isolation, and bounded queries.
+
+### 25.14 Epic 19 — Recipe Import
+
+All import sources feed one provider-neutral review pipeline.
+
+**Data and persistence:**
+
+- Add immutable DTOs such as `RecipeImportData`, `ImportedIngredientData`, `IngredientMatch`, and `ImportValidationIssue`; use explicit array-shape PHPDoc only at JSON serialization boundaries.
+- Add household-owned `recipe_import_drafts` when persistence is needed: UUID/id, initiated_by_user_id, source_type JSON/SchemaOrg/Url/Ai, sanitized source_reference nullable, status Draft/Ready/Failed/Confirmed/Expired, normalized payload JSON, issues/warnings JSON, confirmed_recipe_id nullable, expires_at, and timestamps.
+- Store normalized review data, not arbitrary fetched HTML or secrets. Encrypt only if later input contains sensitive data; otherwise protect it through ordinary household policies.
+- Draft retention is configured and cleaned through a scheduled command only after scheduler operations exist; access paths also reject/expire stale drafts.
+
+**Pipeline:**
+
+1. A source parser returns provider-neutral DTOs and never Eloquent models.
+2. `IngredientMatcher` uses current-household normalized Ingredient names and aliases. Exact unique matches may be suggested; ambiguous/unknown matches remain unresolved.
+3. The same QuantityInputParser, unit enums, size limits, and recipe minimum rules validate every imported row.
+4. The review page exposes unsupported fields, uncertainties, ingredient mappings, quantity/unit corrections, and optional creation of missing ingredients through existing actions.
+5. `ConfirmRecipeImport` locks/reloads the owned draft, revalidates every edited field/mapping, invokes existing ingredient actions as explicitly approved and `CreateRecipe`, then marks the draft confirmed in one transaction where practical. It does not duplicate SaveRecipeDetails.
+6. Confirmation is idempotent: a confirmed draft returns its recipe and never creates a duplicate.
+
+Implement JSON first. Schema.org reads `Recipe` JSON-LD defensively, including arrays/graphs and bounded text. URL import uses the Laravel HTTP client behind a `RecipeDocumentFetcher` contract with HTTP/HTTPS only, no URL credentials, DNS/resolved-address private/reserved rejection, redirect revalidation, explicit connect/request timeout, redirect/byte limits, safe content types, and translated failures. Never fetch inside the recipe-write transaction.
+
+**Required tests:** valid/minimal JSON, malformed/oversized input, unsupported units, exact/ambiguous/unknown ingredients, edited review, no-save-before-confirmation, idempotent confirm, household isolation, archived ingredient rules, existing action reuse, Schema.org variants, SSRF/redirect/timeout/content limits, provider fake, rollback, and draft expiry.
+
+### 25.15 Epic 20 — AI-Assisted Recipe Processing
+
+AI is one optional source for the Epic 19 review draft.
+
+**Boundary:**
+
+- Define `RecipeTextExtractor` under a capability-focused App\Integrations\RecipeExtraction contract namespace. Its method accepts a bounded text/request DTO and returns provider-neutral RecipeImportData plus uncertainty/issues.
+- Bind one approved provider adapter in a service provider through configuration. Keep provider SDK/HTTP response classes inside the adapter.
+- Provide a deterministic fake/stub binding for feature tests. Unit-test schema/DTO validation independently from the provider.
+- Version the requested structured response schema. Reject missing required structure, extra oversized collections/text, invalid quantities/units, malformed JSON, and unsupported enum values before a review draft is Ready.
+
+**Workflow:**
+
+1. The user pastes bounded text and explicitly starts extraction.
+2. `ExtractRecipeImportDraft` records/authorizes the draft intent, then calls the provider outside any domain transaction.
+3. The adapter uses explicit timeout/retry policy. Retry only failures safe to repeat and attach a provider request/correlation ID without logging recipe text or credentials.
+4. Validated output becomes an Epic 19 review draft with uncertain fields highlighted. Confidence is display assistance, not permission to skip review.
+5. Confirmation follows `ConfirmRecipeImport` and ordinary domain validation/actions. The provider has no database credentials or model access.
+
+If provider latency makes synchronous Livewire requests unsuitable, use a queued extraction job only after the worker/after-commit/monitoring gate. Make the job unique/idempotent by draft and extraction version, define timeout/backoff/max attempts, store a safe failure state, and let the user retry. The manual recipe form and JSON import remain available during outages.
+
+The implementation plan must document sent data, provider retention/training terms, region, secrets, estimated per-request cost, quotas/rate limits, deletion/retention of raw input, and user-facing privacy copy. Never send pantry, household membership, authentication, or unrelated recipe history unless an approved extraction need explicitly requires it.
+
+**Required tests:** fake happy path, schema violations, uncertain/unsupported fields, timeout/retry/rate-limit/malformed response, safe logs, idempotent queued/synchronous retry, provider outage/manual fallback, no direct persistence, normal review confirmation, authorization/household isolation, and cost/quota enforcement.
+
+### 25.16 Epic 21 — Barcode Scanning
+
+Barcode scanning accelerates a normal confirmed pantry entry; it does not create a second inventory path.
+
+**Persistence and provider boundary:**
+
+- Add household-owned `product_barcode_mappings` with barcode string, ingredient_id, ingredient_package_id nullable, provider/provider_product_id nullable, confirmed label snapshot, confirmed_by_user_id, last_confirmed_at, and timestamps.
+- Enforce unique household_id + barcode. Validate Ingredient/Package belong to that household/ingredient.
+- Preserve a barcode as a canonical digit string so leading zeroes remain. Validate the approved GTIN lengths/check digit; do not cast to integer.
+- Define `ProductDataProvider` returning bounded provider-neutral ProductLookupData. External name, quantity, unit, image, or category is untrusted suggestion data.
+- Provider response cache keys include provider/version/barcode and contain public product facts only. Confirmed household mappings are queried separately and never shared through a global cache entry.
+
+**Workflow:**
+
+1. Camera scanning or manual entry supplies the same barcode field. Camera permission is requested only after user interaction and requires a secure browser context.
+2. Look up the current household mapping first; otherwise call the provider through explicit timeout/error handling.
+3. Show product facts, ingredient/package match, quantity/unit, uncertainty, and edits on a confirmation screen.
+4. `ConfirmBarcodeMapping` validates and stores the household mapping.
+5. `AddScannedPantryStock` delegates to the ordinary pantry batch/add action with the confirmed IngredientPackage, count, expiry, and availability input. It never writes stock from the browser/provider payload directly.
+6. An unknown barcode or failed provider offers manual mapping and ordinary pantry entry without blocking the user.
+
+**Required tests:** leading zero/check digits, manual/camera-equivalent input, confirmed mapping reuse, cross-household isolation, provider fake/unknown/timeout/malformed/oversized response, ingredient/package mismatch, user correction, unknown fallback, package/batch pantry action reuse, no duplicate mapping race, cache separation, and camera denial/manual usability.
+
+### 25.17 Epic 22 — Progressive Web App
+
+The first PWA is an installable, mobile-focused presentation layer over the same online Laravel/Livewire application.
+
+**Assets and caching:**
+
+- Add a standards-compliant web app manifest with approved name, start URL, scope, display mode, theme/background colors, and generated icon sizes.
+- Build/register a versioned service worker through the existing Vite asset path or a small dedicated source file. Do not add a PWA dependency unless its concrete benefit and update behavior are approved.
+- Precache only hashed static application assets, icons, and a generic offline fallback. Use network-only for authenticated HTML, Livewire update/upload endpoints, `/api`, logout, account settings, recipe media requiring authorization, and household data.
+- Use a release/version cache name, delete obsolete static caches on activation, and avoid `skipWaiting` behavior that can interrupt an in-progress form unless the update UX handles it.
+- The offline fallback contains no prior user's names, recipes, pantry, groceries, tokens, or household identifiers.
+
+**Mobile UX:**
+
+- Audit recipes, decision mode, pantry batch entry, dinner planning, grocery checking, household switching, imports, and barcode confirmation at narrow viewports and touch targets.
+- Preserve keyboard/focus/screen-reader behavior and visible online/offline/loading/error states.
+- “Installed” must not imply offline editing. Disable or explain unavailable mutations when offline; do not queue writes in IndexedDB/localStorage.
+- Browser storage must not contain long-lived API tokens or serialized household data for this first version.
+
+**Required verification:** manifest/icon validation, installability on the approved device/browser matrix, service-worker scope/update/cache cleanup, static offline fallback, no private response in Cache Storage, logout/user-switch safety, narrow-screen accessibility, degraded connection behavior, Vite production build, and manual install/update checks. Do not claim full offline support or PWA certification from a single automated audit.
+
+### 25.18 Epic 23 — Public API
+
+The API is a versioned delivery adapter. It is introduced only after household ownership is complete so its tenancy contract does not encode temporary user ownership.
+
+**Foundation:**
+
+- With explicit dependency approval, use Laravel's API installation/Sanctum path for first-party/mobile tokens. Passport is reserved for an actual OAuth2 delegation requirement.
+- Add `routes/api.php` and group the initial contract under `/api/v1`. Shared resource routes are nested under `/api/v1/households/{household}` and use scoped bindings plus explicit membership policies.
+- Personal endpoints such as token/favourite management still verify that referenced recipes are accessible in the named household.
+- Add controllers under App\Http\Controllers\Api\V1, Form Requests under App\Http\Requests\Api\V1, and API Resources under App\Http\Resources\Api\V1. Controllers call the same actions/queries used by Livewire and return Resources; never return Eloquent models directly.
+- Define one documented JSON error shape for authentication, authorization/not-found policy, validation, conflict/domain errors, throttling, and server/provider failure. Do not leak SQL, stack traces, foreign record existence, or provider secrets.
+
+**Contract behavior:**
+
+- Start with read-only recipes and filters, then pantry, plan, and grocery reads before adding mutations.
+- Add writes one use case at a time through existing actions: favourite, pantry batch add/update, plan/change/cancel/restore/cook, grocery check/manual item, and substitution only when the web action contract is stable.
+- Pagination is cursor or page based per documented resource; collection order is explicit and stable. Filters reuse RecipeEligibilityFilter and other query data objects rather than parsing independently in controllers.
+- Resource representations distinguish exact need, normalized/display quantities, substituted effective need, reservations, purchase suggestions/overrides, known/unknown costs, and timestamps/timezone semantics.
+- Define retry/idempotency semantics for each mutation. Naturally idempotent actions keep their current contract; duplicate-creating operations such as planning require an approved idempotency-key design before clients rely on automatic retries.
+- Rate limits are segmented by authenticated user/token and endpoint cost. Provider-backed import/barcode/AI endpoints also apply their provider quota.
+- Tokens use least-privilege abilities if the approved client needs read/write separation, while Household membership remains mandatory and is rechecked on every request. Membership removal takes effect immediately regardless of token lifetime.
+
+**Documentation and tests:**
+
+- Document endpoints, auth, abilities, version/deprecation policy, pagination/filter syntax, quantity/money shapes, timezones, errors, rate limits, idempotency, and examples in `docs/`.
+- Feature/contract tests cover unauthenticated, unverified/invalid token as applicable, member/non-member, Owner-only operations, validation, conflict, resource shape, pagination/order/filtering, rate limits, token revocation, and parity with the corresponding web action.
+- Add query ceilings for collection endpoints and ensure Resources do not trigger lazy-loading/N+1 queries.
+
+Breaking representation or behavior changes require a new version or documented compatible transition. Database schema changes do not automatically become API changes.
+
+### 25.19 Cross-epic quality and completion contract
+
+For every post-MVP epic:
+
+1. Start with a read-only repository analysis covering the affected migrations/models/actions/services/forms/controllers/policies/routes/views/tests/docs and the baseline/delta in this section.
+2. Produce an implementation plan with current behavior, proposed schema/classes, reused code, vertical slices, acceptance tests, risks, migration/backfill/rollback, operations, and documentation updates. Resolve relevant Section 24.6 decisions before the behavior that depends on them.
+3. Implement one vertical slice that reaches persistence/domain/application/delivery/tests/docs as appropriate; avoid horizontal “all models first” batches.
+4. Run the narrowest feature/unit/MySQL concurrency tests, then Pint for PHP changes, Larastan when types/query shapes change, Vite for frontend assets, and any provider/PWA/API contract checks.
+5. Review the complete diff for duplicated logic, authorization, household isolation, transaction/lock order, fixed-precision arithmetic, query bounds, external failure handling, accessibility, and accurate comments/docs.
+6. Update the relevant stage/epic status and verified evidence in this architecture only after the code exists. Planned target tables/classes in Section 25 must not be rewritten as confirmed repository facts early.
+
+An epic is not complete merely because its happy-path UI works. Its failure, authorization/isolation, migration/backfill, rollback/conflict, edge calculation, query/performance, and documentation obligations must be satisfied in proportion to risk.
+
+The complete post-MVP roadmap still fits the Laravel-first modular monolith. External providers, a service worker, and a versioned API are adapters around the same application/domain truth; shared households and pantry batches are explicit schema evolutions inside the same MySQL consistency boundary.
