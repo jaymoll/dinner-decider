@@ -3,6 +3,7 @@
 namespace App\Actions\DinnerPlans;
 
 use App\Enums\PlannedDinnerStatus;
+use App\Enums\PlannedDinnerStatusEventType;
 use App\Models\DinnerPlan;
 use App\Models\PlannedDinner;
 use App\Models\User;
@@ -38,6 +39,13 @@ final readonly class DuplicatePlannedDinner
             $dinner->planned_date = $this->date($plannedDate);
             $dinner->position = ((int) PlannedDinner::query()->whereBelongsTo($plan)->active()->max('position')) + 1;
             $dinner->save();
+            $dinner->statusEvents()->create([
+                'event_type' => PlannedDinnerStatusEventType::Planned,
+                'from_status' => null,
+                'to_status' => PlannedDinnerStatus::Planned,
+                'occurred_at' => $dinner->created_at,
+                'actor_user_id' => $plan->user_id,
+            ]);
 
             foreach ($requirements as $requirement) {
                 // Coverage, shortages, and cooking notes are derived occurrence state and must not

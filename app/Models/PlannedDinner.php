@@ -7,6 +7,7 @@ use Carbon\CarbonImmutable;
 use Database\Factories\PlannedDinnerFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -31,6 +32,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $cancelled_at
  * @property Carbon|null $restored_at
  * @property-read DinnerPlan $dinnerPlan
+ * @property-read Collection<int, PlannedDinnerStatusEvent> $statusEvents
  */
 #[Fillable(['dinner_plan_id', 'recipe_id', 'recipe_name', 'recipe_description', 'source_servings', 'servings', 'preparation_minutes', 'cooking_minutes', 'difficulty', 'cuisine', 'meal_type', 'notes', 'image_path', 'source_url', 'recipe_steps', 'recipe_categories', 'recipe_tags', 'planned_date', 'status', 'position', 'cooked_at', 'cancelled_at', 'restored_at'])]
 class PlannedDinner extends Model
@@ -57,6 +59,12 @@ class PlannedDinner extends Model
     public function requirements(): HasMany
     {
         return $this->hasMany(PlannedDinnerRequirement::class)->orderBy('position');
+    }
+
+    /** @return HasMany<PlannedDinnerStatusEvent, $this> */
+    public function statusEvents(): HasMany
+    {
+        return $this->hasMany(PlannedDinnerStatusEvent::class)->oldest('occurred_at')->oldest('id');
     }
 
     /**

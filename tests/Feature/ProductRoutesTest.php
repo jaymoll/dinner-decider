@@ -18,6 +18,7 @@ class ProductRoutesTest extends TestCase
         $this->get(route('recipes.index'))->assertRedirect(route('login'));
         $this->get(route('pantry.index'))->assertRedirect(route('login'));
         $this->get(route('recommendations.index'))->assertRedirect(route('login'));
+        $this->get(route('decisions.index'))->assertRedirect(route('login'));
         $this->get(route('dinner-plans.index'))->assertRedirect(route('login'));
         $this->get(route('groceries.index'))->assertRedirect(route('login'));
     }
@@ -30,6 +31,7 @@ class ProductRoutesTest extends TestCase
         $this->actingAs($user)->get(route('recipes.index'))->assertRedirect(route('verification.notice'));
         $this->actingAs($user)->get(route('pantry.index'))->assertRedirect(route('verification.notice'));
         $this->actingAs($user)->get(route('recommendations.index'))->assertRedirect(route('verification.notice'));
+        $this->actingAs($user)->get(route('decisions.index'))->assertRedirect(route('verification.notice'));
         $this->actingAs($user)->get(route('dinner-plans.index'))->assertRedirect(route('verification.notice'));
         $this->actingAs($user)->get(route('groceries.index'))->assertRedirect(route('verification.notice'));
     }
@@ -42,6 +44,7 @@ class ProductRoutesTest extends TestCase
         $this->actingAs($user)->get(route('recipes.index'))->assertOk()->assertSee('Recipes');
         $this->actingAs($user)->get(route('pantry.index'))->assertOk()->assertSee('Pantry');
         $this->actingAs($user)->get(route('recommendations.index'))->assertOk()->assertSee('Recommendations');
+        $this->actingAs($user)->get(route('decisions.index'))->assertOk()->assertSee('Decision Mode');
         $this->actingAs($user)->get(route('dinner-plans.index'))->assertOk()->assertSee('Dinner plan');
         $this->actingAs($user)->get(route('groceries.index'))->assertOk()->assertSee('Groceries');
     }

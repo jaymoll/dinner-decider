@@ -1,6 +1,6 @@
 # Dinner Decider application architecture
 
-Status: Stages 0–5 implemented; Stage 6 automated quality gate passed with staging and recovery-operations gates still open; Post-MVP Epics 10–23 architected but not implemented
+Status: Stages 0–7 implemented locally; Stage 6–7 automated and browser gates passed with staging and recovery-operations gates still open; Post-MVP Epics 13–23 architected but not implemented
 
 Last reviewed: 2026-07-27
 
@@ -1610,6 +1610,8 @@ Local exit condition met: automated checks pass, all nine roadmap regressions ha
 
 Exit condition: personal favourites are isolated, dinner history remains accurate after recipe/lifecycle changes, and Decision Mode is deterministic, explainable, and creates an ordinary planned dinner without AI.
 
+Implementation evidence on 13 August 2026: Stage 7 now implements all three vertical slices. `recipe_favourites` is a unique user/recipe pivot with idempotent authorized actions, archive-preserving catalogue/detail controls, a URL-backed filter, and a secondary recommendation tie-break. `planned_dinner_status_events` records lifecycle evidence inside the existing three-attempt dinner transactions; an upgrade migration reconstructed six honest events for four pre-Stage-7 occurrences without changing occurrence count. `GetDinnerHistory` provides named pagination, owned-recipe/status/inclusive Amsterdam-date filters, stable effective-time ordering, and eager-loaded timelines over immutable snapshots. Decision Mode adds a pure versioned hash-order engine, bounded primitive session state, a revalidating `PlanDecisionChoice` boundary, and a protected Livewire/Flux page. MySQL schema inspection and `EXPLAIN ANALYZE` used the planned favourite composite index and an indexed history range scan, so no extra indexes were added. The seeded pantry → Decision Mode → plan → grocery → cook → history journey passed in the signed-in browser at desktop and mobile widths with keyboard activation, accessible control names, no horizontal overflow, and no application console warnings/errors. Staging authentication/accessibility review and the coordinated backup/restore drill (including both new tables) remain open.
+
 ### Stage 8 — Recipe discovery and flexibility (Epics 13–14)
 
 1. Reuse Tag for free-form organization and add explicit structured dietary facts with Unknown semantics.
@@ -1863,7 +1865,7 @@ Implementation evidence on 27 July 2026: the automated portion is complete. The 
 
 ### 25.5 Epic 10 — Recipe Favourites
 
-**Current baseline:** Recipe is user-owned, has active/archive scopes, and is loaded by catalogue, detail, recommendation, and planning flows. There is no favourite state.
+**Implemented baseline (13 August 2026):** Recipe remains user-owned; personal favourite state is stored in `recipe_favourites`, exposed through typed relationships and `Recipe::favouritedBy()`, and authorized through the dedicated `favourite` policy ability.
 
 **Persistence:**
 
@@ -1883,7 +1885,7 @@ Implementation evidence on 27 July 2026: the automated portion is complete. The 
 
 ### 25.6 Epic 11 — Cooking and Dinner History
 
-**Current baseline:** PlannedDinner already distinguishes Planned/Cooked/Cancelled, stores cooked_at/cancelled_at/restored_at, snapshots recipe/servings/requirements, supports archived/history planning, and keeps Cooked terminal. Preserve it.
+**Implemented baseline (13 August 2026):** PlannedDinner remains authoritative for current status and immutable snapshots. `planned_dinner_status_events` supplies append-only transition evidence, while `GetDinnerHistory` owns bounded filtering, chronology, and eager loading for the existing Livewire history surface.
 
 **Persistence delta:**
 
@@ -1904,6 +1906,8 @@ Implementation evidence on 27 July 2026: the automated portion is complete. The 
 ### 25.7 Epic 12 — Decision Mode
 
 Decision Mode is an explainable selection layer, not a second recommendation or planning system.
+
+**Implemented baseline (13 August 2026):** `GetDecisionCandidates` reuses the complete ranked recommendation collection, loads last-cooked timestamps in one grouped query, and passes results to the pure `DecisionEngine`. The `/decision-mode` SFC persists only a locked seed, round, servings, and bounded exclusions; `PlanDecisionChoice` rechecks the active owned candidate before delegating to `PlanDinner`.
 
 **First-version contract:**
 

@@ -3,6 +3,7 @@
 namespace App\Actions\DinnerPlans;
 
 use App\Enums\PlannedDinnerStatus;
+use App\Enums\PlannedDinnerStatusEventType;
 use App\Models\DinnerPlan;
 use App\Models\PlannedDinner;
 use App\Models\Recipe;
@@ -78,6 +79,13 @@ final readonly class PlanDinner
                 'planned_date' => $date,
                 'status' => PlannedDinnerStatus::Planned,
                 'position' => $position,
+            ]);
+            $dinner->statusEvents()->create([
+                'event_type' => PlannedDinnerStatusEventType::Planned,
+                'from_status' => null,
+                'to_status' => PlannedDinnerStatus::Planned,
+                'occurred_at' => $dinner->created_at,
+                'actor_user_id' => $lockedPlan->user_id,
             ]);
 
             foreach ($lockedRecipe->ingredients as $line) {

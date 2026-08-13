@@ -8,6 +8,7 @@ use App\Models\Ingredient;
 use App\Models\IngredientPackage;
 use App\Models\PantryEntry;
 use App\Models\PlannedDinner;
+use App\Models\PlannedDinnerStatusEvent;
 use App\Models\Recipe;
 use App\Models\RecipeCategory;
 use App\Models\Tag;
@@ -68,6 +69,7 @@ class DatabaseSeederTest extends TestCase
         $this->assertSame(10, Recipe::query()->whereBelongsTo($user)->active()->count());
         $this->assertSame(3, RecipeCategory::query()->whereBelongsTo($user)->count());
         $this->assertSame(4, Tag::query()->whereBelongsTo($user)->count());
+        $this->assertSame(3, $user->favouriteRecipes()->count());
 
         $recipe = Recipe::query()
             ->whereBelongsTo($user)
@@ -100,6 +102,7 @@ class DatabaseSeederTest extends TestCase
 
         $this->assertTrue(PlannedDinner::query()->where('recipe_name', 'Spinach Omelette')->where('status', 'cooked')->exists());
         $this->assertTrue(PlannedDinner::query()->where('recipe_name', 'Butter Toast')->where('status', 'cancelled')->exists());
+        $this->assertSame(6, PlannedDinnerStatusEvent::query()->count());
         $groceryList = GroceryList::query()->whereHas('dinnerPlan', fn ($query) => $query->whereBelongsTo($user))->sole();
         $this->assertTrue($groceryList->items()->where('source', 'manual')->where('name', 'Paper towels')->exists());
         $this->assertTrue($groceryList->items()->whereNotNull('checked_at')->exists());

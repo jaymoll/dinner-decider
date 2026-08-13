@@ -34,5 +34,6 @@ class DatabaseSeeder extends Seeder
 
         $this->call(StageOneCatalogueSeeder::class);
         $this->call(StageThreeDinnerPlanSeeder::class);
+        $this->call(StageSevenDemoSeeder::class);
     }
 }

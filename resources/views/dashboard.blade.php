@@ -5,7 +5,7 @@
                 <flux:heading id="dashboard-heading" size="xl">Choose dinner with what you have</flux:heading>
                 <flux:text class="mt-2 max-w-2xl">Keep your pantry current, compare recommendation explanations, then plan dinner. Reservations and grocery shortfalls update automatically.</flux:text>
             </div>
-            <flux:button :href="route('recommendations.index')" wire:navigate variant="primary" icon="sparkles">Find a dinner</flux:button>
+            <div class="flex flex-wrap gap-2"><flux:button :href="route('decisions.index')" wire:navigate variant="primary" icon="sparkles">Choose for me</flux:button><flux:button :href="route('recommendations.index')" wire:navigate>Compare all</flux:button></div>
         </div>
 
         <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -14,6 +14,7 @@
                 ['route' => 'recipes.index', 'icon' => 'book-open', 'title' => 'Recipes', 'description' => 'Build your catalogue or plan again from archived recipes.'],
                 ['route' => 'pantry.index', 'icon' => 'archive-box', 'title' => 'Pantry', 'description' => 'Track stock and see what is reserved for planned dinners.'],
                 ['route' => 'recommendations.index', 'icon' => 'sparkles', 'title' => 'Recommendations', 'description' => 'Review ranked choices with clear coverage explanations.'],
+                ['route' => 'decisions.index', 'icon' => 'sparkles', 'title' => 'Decision Mode', 'description' => 'Get a deterministic shortlist you can reroll, exclude from, and plan.'],
                 ['route' => 'dinner-plans.index', 'icon' => 'calendar-days', 'title' => 'Dinner plan', 'description' => 'Order dinners, adjust dates and servings, and record cooking.'],
                 ['route' => 'groceries.index', 'icon' => 'shopping-cart', 'title' => 'Groceries', 'description' => 'Shop exact shortfalls and keep manual grocery items together.'],
             ] as $area)

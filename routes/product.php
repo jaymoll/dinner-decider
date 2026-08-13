@@ -20,5 +20,6 @@ Route::livewire('pantry/create', 'pages::pantry.create')->name('pantry.create');
 Route::livewire('pantry/{pantryEntry}/edit', 'pages::pantry.edit')->name('pantry.edit');
 
 Route::livewire('recommendations', 'pages::recommendations.index')->name('recommendations.index');
+Route::livewire('decision-mode', 'pages::decisions.index')->name('decisions.index');
 Route::livewire('dinner-plan', 'pages::dinner-plans.index')->name('dinner-plans.index');
 Route::livewire('groceries', 'pages::groceries.index')->name('groceries.index');
