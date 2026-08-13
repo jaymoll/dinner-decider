@@ -1,7 +1,7 @@
 # Dinner Decider MVP release checklist
 
-Status: Stage 5 implemented; production release gates remain open  
-Evidence date: 22 July 2026
+Status: Stage 6 automated quality gate passed; staging and recovery-operations gates remain open
+Evidence date: 27 July 2026
 
 ## Executable baseline
 
@@ -9,17 +9,19 @@ Environment: Sail on Docker Desktop 29.6.1, PHP 8.5.8, Laravel 13.20.0, Livewire
 
 | Check | Result |
 | --- | --- |
-| MySQL full suite before Stage 5 | Pass: 135 tests, 363 assertions, 417.92 s |
-| MySQL full suite after Stage 5 | Pass: 143 tests, 451 assertions, 304.11 s, including concurrency |
-| Pint baseline | Pass |
-| Larastan level 7 baseline | Pass, 171 files |
-| Vite production build baseline | Pass, 57.74 s; optional Fontaine optimization warning only |
+| Stage 6 baseline | Clean worktree at `d030ddbdb5ed02b8033566b80708834c7c4f5502`; 143 tests discovered; all 22 migrations applied |
+| Focused Stage 6 slice | Pass: 30 tests, 139 assertions, 83.93 s |
+| MySQL full suite | Pass: 153 tests, 516 assertions, 154.12 s, including concurrency |
+| Pint | Pass after Stage 6 changes |
+| Larastan level 7 | Pass, 172 files |
+| Vite production build | Pass, 36.94 s; optional Fontaine optimization warning only |
 | Composer validate/platform | Pass |
-| npm audit | Pass, 0 vulnerabilities |
+| Locked Composer/npm audits | Pass, 0 advisories/vulnerabilities |
 | Optimized config/routes/views smoke | Pass; `optimize` and `about` succeeded, caches cleared afterward |
-| Composer audit | **Blocked:** three medium Guzzle advisories require `guzzlehttp/guzzle >= 7.15.1`; dependency update approval is required |
 
 Host PHP cannot resolve Docker's `mysql` service name and host Node/npm are absent, so container results are authoritative. The application container was intermittently marked unhealthy while its `/up` health check competed with the slow bind-mounted test run; production health behavior must be rechecked on staging.
+
+The former Guzzle blocker is closed: the lock file contains Guzzle 7.15.1, the complete gate was rerun, and `composer audit --locked` reports no advisories.
 
 ## Demo fixture and performance
 
@@ -43,7 +45,7 @@ Ten warm Livewire component samples were recorded inside Sail after one discarde
 | Dinner plan | 196.43 ms | 281.75 ms |
 | Groceries | 185.35 ms | 525.86 ms |
 
-No `EXPLAIN`-identified regression required a new index. Re-run measurements on staging before release.
+The actual MySQL 8.4.10 definitions retain the required singleton, pantry-merge, requirement-position, reservation, generated-key, and contribution uniqueness constraints; foreign-key delete behavior matches aggregate ownership. Representative `EXPLAIN ANALYZE` results used the recipe ownership/archive index, the pantry primary/ownership filtering path, the active-plan priority index, and a grocery-list index lookup. The plan and grocery reads sort only their already-filtered two- and five-row demo sets. No evidence justified a new constraint or index. Re-run measurements on staging before release.
 
 ## Product-decision acceptance map
 
@@ -60,6 +62,22 @@ No `EXPLAIN`-identified regression required a new index. Re-run measurements on 
 | Configurable scoring | `RecommendationEngineTest` and six-query recommendation integration test |
 | Required/Optional non-exact workflow | recommendation, grocery, dinner lifecycle and journey tests |
 
+## Stage 6 roadmap regression map
+
+| Roadmap scenario | Direct observable evidence |
+| --- | --- |
+| Archived recipe can be planned again | `DinnerPlanningTest` covers the owned archived snapshot and foreign-owner denial |
+| Duplicate dinner occurrences | `DinnerPlanningTest` asserts independent dinner, requirement, and reservation identities |
+| Cancelled dinner restoration | `DinnerLifecycleTest` asserts current-stock reallocation, partial/missing amounts, timestamps, and cooked terminal states |
+| Missing requirements require confirmation | `DinnerLifecycleTest`, `GroceryManagementTest`, and `MvpJourneyTest` cover fresh confirmation and exactly-once consumption |
+| Earliest dinner receives stock first | `DinnerPlanPriorityTest` covers dated before undated, earliest date, position tie-break, reorder, and date reprioritization |
+| Grocery quantities recalculate | `GroceryManagementTest` drives serving, pantry add/update/remove, and regeneration through production actions |
+| Increased checked quantity becomes unchecked | `GroceryManagementTest` retains checks for equal/decreased quantities and invalidates them on a real increase |
+| Unavailable staple retains staple designation | `PantryManagementTest` asserts persistence, no reservation, recommendation gap, and generated grocery need |
+| Manual grocery rules | `GroceryManagementTest` covers add, update, remove, regeneration preservation, generated-item rejection, and override reset |
+
+Transaction evidence also covers injected grocery-generation failure with no partial pantry/reservation/requirement/grocery state, competing reorder/stock/plan operations, and exactly-once concurrent cooking. Every reviewed `lockForUpdate()` is inside a transaction, and high-risk transaction retries are bounded to three attempts.
+
 ## Security and accessibility review
 
 - Product routes require authentication and verified email, including groceries; ownership failures are covered across ingredient, recipe, pantry, dinner, grocery, and recommendation paths.
@@ -72,7 +90,6 @@ No `EXPLAIN`-identified regression required a new index. Re-run measurements on 
 
 ## Open release gates
 
-- Approve and apply the Guzzle security update, refresh the lock file, then rerun the full gate.
 - Playwright/axe packages were not added because dependency approval is required. Run keyboard-only, focus, screen-reader spot checks, 200% zoom, light/dark mode, and 320/375/768/1024/1440 px checks manually or approve that tooling.
 - Run the two browser journeys, console/network review, passkey and 2FA secure-origin checks on staging.
 - Complete the coordinated database/image backup-and-restore drill and fill the RPO/RTO/retention/owner fields in the operations runbook.
@@ -89,3 +106,5 @@ No `EXPLAIN`-identified regression required a new index. Re-run measurements on 
 6. Browser journeys, accessibility/responsive matrix, console/network review.
 7. Isolated backup/restore drill.
 8. Fresh staging deployment and walkthrough.
+
+Steps 1–5 passed on 27 July 2026. Steps 6–8 require the staging environment and production operations decisions and remain open.

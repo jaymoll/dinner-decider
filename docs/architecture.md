@@ -1,8 +1,8 @@
 # Dinner Decider application architecture
 
-Status: Stages 0–5 implemented; MVP release candidate with open release gates; Post-MVP Epics 9–23 architected but not implemented
+Status: Stages 0–5 implemented; Stage 6 automated quality gate passed with staging and recovery-operations gates still open; Post-MVP Epics 10–23 architected but not implemented
 
-Last reviewed: 2026-07-24
+Last reviewed: 2026-07-27
 
 Sources of functional scope: Dinner Decider MVP Product Specification.docx and Dinner Decider Post-MVP Development Plan.docx<br>
 Resolved product decisions: Dinner Decider — Remaining MVP Product Decisions<br>
@@ -1591,13 +1591,16 @@ Baseline evidence: 135 tests and 363 assertions passed against MySQL 8.4 before 
 
 ### Stage 6 — Post-MVP quality gate (Epic 9)
 
-1. Re-run the MVP automated and manual release gates against the current dependency set.
-2. Trace each critical mutation from Livewire/Form Request through policy, action, transaction, model/service, and tests; record and remove actual duplication rather than reorganizing speculatively.
-3. Inspect MySQL constraints/indexes and use query plans for measured hot reads. Review lock order and rollback behavior for pantry, plan, cooking, and grocery actions.
-4. Exercise the nine roadmap regression scenarios, including archive/history planning, duplicate occurrences, restore, unresolved cooking, earliest-dinner allocation, grocery recalculation/check reset, unavailable staples, and manual grocery rules.
-5. Update architecture, codebase guide, release checklist, and runbook with evidence and remaining risk.
+Automated implementation completed on 27 July 2026:
 
-Exit condition: the current suite and quality checks pass, every roadmap regression has focused coverage, and no unresolved correctness/ownership/transaction defect is knowingly carried into feature work.
+1. Re-ran the gate against commit `d030ddbdb5ed02b8033566b80708834c7c4f5502` and the locked dependency set. The idempotent demo fixture, all 22 migrations, Composer/platform validation, Composer/npm audits, Pint, Larastan level 7, Vite production build, and optimized config/routes/views smoke passed in Sail.
+2. Traced each product mutation through Livewire validation or form validation, owner-scoped lookup, policy/action authorization, transaction ownership, reconciliation/regeneration exits, and regression coverage. The established Livewire SFC/Form/action architecture remains appropriate; no controllers, Form Requests, repositories, or speculative abstractions were added.
+3. Confirmed that every `lockForUpdate()` is inside a transaction, high-risk actions use the singleton plan as their lock root, child locks follow stable order, and deadlock retries are bounded to three attempts. A failure injected during grocery generation proves pantry, reservation, requirement, and grocery changes roll back together.
+4. Inspected the actual MySQL 8.4.10 table definitions and representative `EXPLAIN ANALYZE` plans. Singleton, merge, requirement-position, reservation, generated-key, and contribution uniqueness constraints are present. Hot reads use the existing ownership/priority indexes; no evidence justified a migration.
+5. Added direct feature coverage for archived recipe planning/ownership, dated and undated priority, position tie-breaking and reprioritization, restored-current-stock and terminal states, action-driven grocery recalculation, checked-state invalidation, unavailable staples across projections, the full manual-item lifecycle, rollback, and competing reorder/stock/plan operations.
+6. The focused slice passed 30 tests with 139 assertions. The full MySQL suite passed 153 tests with 516 assertions in 154.12 seconds, including process-level concurrency. The exact evidence and remaining external gates are recorded in `docs/mvp-release-checklist.md`.
+
+Local exit condition met: automated checks pass, all nine roadmap regressions have direct observable coverage, and the review found no known correctness, ownership, transaction, rollback, constraint, or index defect. Epic 9 remains operationally open until staging browser/accessibility/authentication checks, production-like configuration review, the coordinated backup/restore drill, and production RPO/RTO/retention/owner approvals are recorded.
 
 ### Stage 7 — Everyday usability (Epics 10–12)
 
@@ -1855,6 +1858,8 @@ Required review:
 Outputs are evidence, focused fixes, and documentation updates. Do not create base classes, repositories, events, or folders merely to make the tree look more symmetrical.
 
 Minimum verification includes the full existing suite, Pint, Larastan, Vite build, dependency/platform checks, MySQL concurrency tests, query ceilings, and the still-open staging/manual release checks. Any bug fix receives a failing regression test first.
+
+Implementation evidence on 27 July 2026: the automated portion is complete. The mutation matrix is recorded in `docs/codebase-guide.md`; the focused slice passes 30 tests with 139 assertions, and the full MySQL 8.4 suite passes 153 tests with 516 assertions including concurrency. Pint, Larastan level 7 over 172 files, the Vite production build, Composer validation/platform checks, locked Composer/npm audits, and optimized config/routes/views smoke all pass. Actual MySQL definitions and representative recommendation, pantry, dinner-priority, and grocery plans required no schema change. Staging/manual and recovery-operations evidence remains open as listed in `docs/mvp-release-checklist.md` and `docs/operations-runbook.md`.
 
 ### 25.5 Epic 10 — Recipe Favourites
 

@@ -182,6 +182,23 @@ Livewire form objects keep large, reusable form state out of page components. Th
 
 Form objects validate input but do not replace actions. After validation, the page passes the result to an action such as `CreateRecipe` or `UpdateRecipe`.
 
+### Mutation review matrix
+
+Stage 6 verified the delivery-to-domain boundary below. The application has no custom product controllers or HTTP Form Requests; Livewire 4 SFC methods and Livewire Form objects are the delivery boundary. Pages coordinate UI state, owner-scope selected IDs before use, and call actions that re-authorize and own business behavior.
+
+| Product mutation | Validation and owner scope | Authorized top-level action | Transaction, locks, and derived exits | Direct regression evidence |
+| --- | --- | --- | --- | --- |
+| Ingredient create/update/archive/restore | `IngredientForm` validates nested aliases/packages and owned package IDs; pages bind or query owned active/archived ingredients | `CreateIngredient`, `UpdateIngredient`, `ArchiveIngredient`, `RestoreIngredient` | Aggregate create/update is transactional; single-row lifecycle actions need no cross-record transaction | `IngredientLivewireTest`, `IngredientManagementTest` |
+| Recipe create/update/archive/restore | `RecipeForm` validates browser input, owned ingredients/packages, quantities, images, steps, categories, and tags; route models are policy-authorized | `CreateRecipe`, `UpdateRecipe`, `ArchiveRecipe`, `RestoreRecipe` | Create/update atomically replace aggregate details and coordinate image rollback; lifecycle actions are single-row writes | `RecipeLivewireTest`, `RecipeManagementTest` |
+| Plan active or archived recipe | Serving/date validation occurs in Livewire or the action; recommendation/archive pages owner-scope recipe IDs and actions re-authorize recipe view | `PlanDinner`, `PlanArchivedRecipe` | Lock plan then owned recipe; snapshot requirements; exit through `ReconcilePlanReservations` then `RegenerateGroceryList`; three attempts | `DinnerPlanningTest`, `MvpJourneyTest` |
+| Pantry add/update/remove and ingredient staple/availability | `PantryEntryForm` or component rules validate representation and positive amounts; pages owner-scope entry/ingredient IDs | `AddPantryStock`, `UpdatePantryEntry`, `RemovePantryEntry`, `UpdateIngredientPantryStatus` | Lock plan, then affected entry or ingredient; exit through reconciliation and grocery regeneration; three attempts | `PantryLivewireTest`, `PantryManagementTest` |
+| Dinner duplicate, servings/date change, reorder, cancel/restore/remove, cook, and plan-again | Component rules validate servings/date; every selected dinner is queried through the mounted owned plan | Feature-specific action under `app/Actions/DinnerPlans` | Lock plan before active dinners/requirements, pantry/reservations, then grocery projection; reconcile after every supply, demand, date, or order change; cooking consumes once; three attempts | `DinnerPlanningTest`, `DinnerLifecycleTest`, `DinnerPlanPriorityTest`, `DinnerPlanConcurrencyTest`, `DinnerPlanLivewireTest` |
+| Manual grocery add/update/remove | `GroceryItemForm` validates name, note, and category; page queries items through its owned list | `AddManualGroceryItem`, `UpdateManualGroceryItem`, `RemoveManualGroceryItem` | Independent single-row checklist writes; regeneration never replaces manual rows | `GroceryLivewireTest`, `GroceryManagementTest` |
+| Grocery check, generated override, and clear completed | Component validates positive override; items are queried through the owned list; actions re-authorize item/list | `ToggleGroceryItemChecked`, `EditGeneratedGroceryQuantity`, `ClearCompletedGroceries` | Independent checklist writes; temporary overrides reset only at authoritative regeneration | `GroceryManagementTest` |
+| Generated grocery replacement | Not invoked from arbitrary browser data; it consumes reconciled owned plan requirements | `RegenerateGroceryList`, called by `ReconcilePlanReservations` | Lock plan, list, and generated rows; atomically replace contributions/generated rows while preserving manual rows and safe check state; three attempts | `GroceryCalculatorTest`, `GroceryManagementTest`, rollback and concurrency tests |
+
+`ReconcilePlanReservations` and `RegenerateGroceryList` remain the only authoritative exits for reservation and generated-grocery projections. Every `lockForUpdate()` call is inside a transaction. The stable hierarchy is plan, active dinners/requirements, pantry entries/reservations, then grocery list/generated items.
+
 ### `app/Rules`: reusable field-level validation
 
 Custom Laravel validation rules hold validation that is reused across forms or that benefits from a named type.

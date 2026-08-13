@@ -3,6 +3,7 @@
 namespace Tests\Feature\DinnerPlans;
 
 use App\Actions\DinnerPlans\DuplicatePlannedDinner;
+use App\Actions\DinnerPlans\PlanArchivedRecipe;
 use App\Actions\DinnerPlans\PlanDinner;
 use App\Enums\RequirementCoverage;
 use App\Models\Ingredient;
@@ -59,6 +60,27 @@ class DinnerPlanningTest extends TestCase
 
         $this->expectException(AuthorizationException::class);
         app(PlanDinner::class)->handle(User::factory()->create(), $recipe, '4');
+    }
+
+    public function test_an_archived_recipe_can_be_planned_as_an_owned_snapshot(): void
+    {
+        [$user, $recipe] = $this->recipeFixture('100');
+        $recipe->update(['archived_at' => now()]);
+
+        $dinner = app(PlanArchivedRecipe::class)->handle($user, $recipe, '4');
+
+        $this->assertSame($recipe->id, $dinner->recipe_id);
+        $this->assertSame($recipe->name, $dinner->recipe_name);
+        $this->assertSame('100.000000', $dinner->requirements()->sole()->scaled_amount);
+    }
+
+    public function test_a_user_cannot_plan_another_users_archived_recipe(): void
+    {
+        [, $recipe] = $this->recipeFixture('100');
+        $recipe->update(['archived_at' => now()]);
+
+        $this->expectException(AuthorizationException::class);
+        app(PlanArchivedRecipe::class)->handle(User::factory()->create(), $recipe, '4');
     }
 
     /** @return array{User, Recipe, Ingredient} */
