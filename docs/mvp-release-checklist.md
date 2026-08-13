@@ -1,7 +1,7 @@
 # Dinner Decider MVP release checklist
 
 Status: Stage 6 automated quality gate passed; staging and recovery-operations gates remain open
-Evidence date: 27 July 2026
+Evidence date: 13 August 2026
 
 ## Executable baseline
 
@@ -11,17 +11,17 @@ Environment: Sail on Docker Desktop 29.6.1, PHP 8.5.8, Laravel 13.20.0, Livewire
 | --- | --- |
 | Stage 6 baseline | Clean worktree at `d030ddbdb5ed02b8033566b80708834c7c4f5502`; 143 tests discovered; all 22 migrations applied |
 | Focused Stage 6 slice | Pass: 30 tests, 139 assertions, 83.93 s |
-| MySQL full suite | Pass: 153 tests, 516 assertions, 154.12 s, including concurrency |
-| Pint | Pass after Stage 6 changes |
+| MySQL full suite | Pass: 153 tests, 516 assertions, 123.68 s, including concurrency |
+| Pint | Pass, 216 files |
 | Larastan level 7 | Pass, 172 files |
-| Vite production build | Pass, 36.94 s; optional Fontaine optimization warning only |
-| Composer validate/platform | Pass |
-| Locked Composer/npm audits | Pass, 0 advisories/vulnerabilities |
+| Vite production build | Pass, 36.20 s; optional Fontaine optimization warning only |
+| Composer validate/platform | Pass: strict lock validation and all platform requirements satisfied |
+| Locked Composer/npm audits | Pass, 0 Composer advisories and 0 npm vulnerabilities |
 | Optimized config/routes/views smoke | Pass; `optimize` and `about` succeeded, caches cleared afterward |
 
 Host PHP cannot resolve Docker's `mysql` service name and host Node/npm are absent, so container results are authoritative. The application container was intermittently marked unhealthy while its `/up` health check competed with the slow bind-mounted test run; production health behavior must be rechecked on staging.
 
-The former Guzzle blocker is closed: the lock file contains Guzzle 7.15.1, the complete gate was rerun, and `composer audit --locked` reports no advisories.
+The Composer advisory blockers are closed: the lock file contains Guzzle 7.15.3, Guzzle Promises 2.5.2, CommonMark 2.10.0, and Nette Utils 4.1.5. The frontend lock file also contains Nano ID 3.3.18 and PostCSS 8.5.26 after their transitive advisory fixes. The complete gate was rerun; `composer audit --locked` and `npm audit --audit-level=high` report no vulnerabilities.
 
 ## Demo fixture and performance
 
