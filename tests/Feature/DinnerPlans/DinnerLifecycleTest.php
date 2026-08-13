@@ -9,12 +9,14 @@ use App\Actions\DinnerPlans\PlanDinner;
 use App\Actions\DinnerPlans\RestoreCancelledDinner;
 use App\Actions\Pantry\UpdatePantryEntry;
 use App\Enums\PlannedDinnerStatus;
+use App\Enums\RequirementCoverage;
 use App\Models\Ingredient;
 use App\Models\PantryEntry;
 use App\Models\Recipe;
 use App\Models\RecipeIngredient;
 use App\Models\User;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use InvalidArgumentException;
 use Tests\TestCase;
 
 class DinnerLifecycleTest extends TestCase
@@ -36,7 +38,15 @@ class DinnerLifecycleTest extends TestCase
 
         app(UpdatePantryEntry::class)->handle($user, $entry, '50');
         app(RestoreCancelledDinner::class)->handle($user, $dinner);
-        $this->assertSame('50.000000', $dinner->requirements()->sole()->reservations()->sum('normalized_amount'));
+        $dinner->refresh();
+        $requirement = $dinner->requirements()->sole();
+        $this->assertSame(PlannedDinnerStatus::Planned, $dinner->status);
+        $this->assertNull($dinner->cancelled_at);
+        $this->assertNotNull($dinner->restored_at);
+        $this->assertSame(RequirementCoverage::Partial, $requirement->coverage);
+        $this->assertSame('150.000000', $requirement->missing_amount);
+        $this->assertSame('50.000000', $requirement->reservations()->sum('normalized_amount'));
+        $this->assertSame('50.000000', $entry->refresh()->total_normalized_amount);
     }
 
     public function test_unresolved_cooking_requires_current_confirmation_and_consumes_only_once(): void
@@ -55,6 +65,22 @@ class DinnerLifecycleTest extends TestCase
         $again = app(MarkDinnerCooked::class)->handle($user, $dinner);
         $this->assertTrue($again->alreadyCooked);
         $this->assertSame('0.000000', $entry->refresh()->total_normalized_amount);
+    }
+
+    public function test_cooked_dinners_are_terminal_for_cancel_and_restore(): void
+    {
+        [$user, $recipe] = $this->fixture('100', '100');
+        $dinner = app(PlanDinner::class)->handle($user, $recipe, '4');
+        $this->assertTrue(app(MarkDinnerCooked::class)->handle($user, $dinner)->cooked);
+
+        foreach ([CancelDinner::class, RestoreCancelledDinner::class] as $actionClass) {
+            try {
+                app($actionClass)->handle($user, $dinner);
+                $this->fail("{$actionClass} must reject a cooked dinner.");
+            } catch (InvalidArgumentException) {
+                $this->assertSame(PlannedDinnerStatus::Cooked, $dinner->refresh()->status);
+            }
+        }
     }
 
     /** @return array{User, Recipe, PantryEntry} */

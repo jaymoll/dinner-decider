@@ -2,21 +2,32 @@
 
 namespace Tests\Feature\Pantry;
 
+use App\Actions\DinnerPlans\PlanDinner;
 use App\Actions\Ingredients\UpdateIngredient;
 use App\Actions\Pantry\AddPantryStock;
 use App\Actions\Pantry\RemovePantryEntry;
+use App\Actions\Pantry\UpdateIngredientPantryStatus;
 use App\Actions\Pantry\UpdatePantryEntry;
+use App\Enums\GroceryItemSource;
 use App\Enums\MeasurementGroup;
+use App\Enums\RequirementCoverage;
 use App\Enums\UnitCode;
+use App\Models\GroceryItem;
 use App\Models\Ingredient;
 use App\Models\IngredientPackage;
 use App\Models\PantryEntry;
+use App\Models\Recipe;
+use App\Models\RecipeIngredient;
 use App\Models\User;
 use App\Queries\AvailablePantry;
+use App\Queries\GetPantryAwareRecommendations;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
+use RuntimeException;
 use Tests\TestCase;
 
 class PantryManagementTest extends TestCase
@@ -159,6 +170,78 @@ class PantryManagementTest extends TestCase
 
         app(RemovePantryEntry::class)->handle($user, $entry);
         $this->assertModelMissing($entry);
+    }
+
+    public function test_an_unavailable_staple_keeps_its_designation_across_all_projections(): void
+    {
+        $user = User::factory()->create();
+        $ingredient = Ingredient::factory()->for($user)->create([
+            'is_staple' => true,
+            'is_currently_available' => true,
+        ]);
+        $recipe = Recipe::factory()->for($user)->create(['default_servings' => 4]);
+        RecipeIngredient::factory()->for($recipe)->for($ingredient)->create([
+            'entered_amount' => '100',
+            'normalized_amount' => '100',
+        ]);
+        PantryEntry::factory()->for($user)->for($ingredient)->create([
+            'total_normalized_amount' => '100',
+        ]);
+        $dinner = app(PlanDinner::class)->handle($user, $recipe, '4');
+        $this->assertSame(RequirementCoverage::Staple, $dinner->requirements()->sole()->coverage);
+
+        app(UpdateIngredientPantryStatus::class)->handle($user, $ingredient, true, false);
+
+        $ingredient->refresh();
+        $requirement = $dinner->requirements()->sole();
+        $recommendation = app(GetPantryAwareRecommendations::class)->get($user)[0];
+        $generated = GroceryItem::query()
+            ->whereHas('groceryList', fn ($query) => $query->where('dinner_plan_id', $dinner->dinner_plan_id))
+            ->where('source', GroceryItemSource::Generated)
+            ->sole();
+
+        $this->assertTrue($ingredient->is_staple);
+        $this->assertFalse($ingredient->is_currently_available);
+        $this->assertSame(RequirementCoverage::Unavailable, $requirement->coverage);
+        $this->assertSame('100.000000', $requirement->missing_amount);
+        $this->assertFalse($requirement->reservations()->exists());
+        $this->assertSame('missing', $recommendation->matches[0]->status);
+        $this->assertSame('100.000000', $generated->calculated_amount);
+    }
+
+    public function test_pantry_changes_roll_back_when_grocery_regeneration_fails(): void
+    {
+        $user = User::factory()->create();
+        $ingredient = Ingredient::factory()->for($user)->create();
+        $recipe = Recipe::factory()->for($user)->create(['default_servings' => 4]);
+        RecipeIngredient::factory()->for($recipe)->for($ingredient)->create([
+            'entered_amount' => '100',
+            'normalized_amount' => '100',
+        ]);
+        $entry = PantryEntry::factory()->for($user)->for($ingredient)->create([
+            'total_normalized_amount' => '100',
+        ]);
+        $dinner = app(PlanDinner::class)->handle($user, $recipe, '4');
+
+        DB::connection()->beforeExecuting(function (string $query): void {
+            if (Str::contains($query, 'insert into `grocery_items`')) {
+                throw new RuntimeException('Simulated grocery regeneration failure.');
+            }
+        });
+
+        try {
+            app(UpdatePantryEntry::class)->handle($user, $entry, '50');
+            $this->fail('The simulated projection failure must escape the transaction.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Simulated grocery regeneration failure.', $exception->getMessage());
+        }
+
+        $requirement = $dinner->requirements()->sole();
+        $this->assertSame('100.000000', $entry->refresh()->total_normalized_amount);
+        $this->assertSame(RequirementCoverage::Full, $requirement->coverage);
+        $this->assertSame('0.000000', $requirement->missing_amount);
+        $this->assertSame('100.000000', $requirement->reservations()->sum('normalized_amount'));
+        $this->assertFalse(GroceryItem::query()->exists());
     }
 
     private function add(User $user, Ingredient $ingredient, string $amount, ?string $unit = null, ?int $packageId = null): PantryEntry

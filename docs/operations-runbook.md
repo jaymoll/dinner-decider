@@ -1,6 +1,6 @@
 # Dinner Decider operations runbook
 
-Last reviewed: 22 July 2026
+Last reviewed: 27 July 2026
 
 This runbook covers the MVP Laravel 13 / PHP 8.5 / MySQL 8.4 deployment. Adapt commands to the selected host and complete every owner/target field before production approval.
 
@@ -56,9 +56,13 @@ The selected host must define:
 | Restore owner and deputy | To be approved |
 | Backup/restore alert destination | To be approved |
 
+Stage 6 review on 27 July 2026 confirmed that these values cannot be inferred from the repository. Production approval requires the named service owner to supply and approve each value; local test timings are not an RPO or RTO.
+
 ## Restore drill
 
 Restore only into an isolated environment first. Provision the matching application release and MySQL version, import the SQL dump, restore recipe images to `storage/app/public/recipe-images`, create the storage link, run `php artisan optimize`, and verify migrations. Compare row counts and checksums, confirm owned relationships and dinner snapshots, load stored images and placeholders, then run the MVP smoke journey. Record duration, achieved RPO/RTO, failures, and remediation before approving a production restore.
+
+No production-like recovery set or approved recovery targets were supplied for the 27 July 2026 Stage 6 run, so the coordinated drill remains open rather than being represented by a local database copy. Record the next drill here with: date, environment, release SHA, MySQL version, database/image/checksum identifiers, start/end duration, row-count and image verification, journey result, achieved RPO/RTO, operator/approver, failures, and remediation.
 
 ## Runtime processes
 
