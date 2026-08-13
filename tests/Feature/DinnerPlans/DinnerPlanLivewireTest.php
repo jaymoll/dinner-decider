@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\DinnerPlans;
 
+use App\Actions\DinnerPlans\CancelDinner;
+use App\Actions\DinnerPlans\MarkDinnerCooked;
 use App\Actions\DinnerPlans\PlanDinner;
 use App\Models\Ingredient;
 use App\Models\PantryEntry;
@@ -86,5 +88,28 @@ class DinnerPlanLivewireTest extends TestCase
             ->assertSeeHtml('role="grid"')
             ->assertSeeHtml(':aria-selected=')
             ->assertSeeHtml(':aria-current=');
+    }
+
+    public function test_history_filters_reset_the_named_page_and_render_lifecycle_timeline(): void
+    {
+        $user = User::factory()->create();
+        $cookedRecipe = Recipe::factory()->for($user)->create(['name' => 'Cooked history']);
+        $cancelledRecipe = Recipe::factory()->for($user)->create(['name' => 'Cancelled history']);
+        $cooked = app(PlanDinner::class)->handle($user, $cookedRecipe, '4');
+        app(MarkDinnerCooked::class)->handle($user, $cooked);
+        $cancelled = app(PlanDinner::class)->handle($user, $cancelledRecipe, '4');
+        app(CancelDinner::class)->handle($user, $cancelled);
+
+        Livewire::actingAs($user)
+            ->test('pages::dinner-plans.index')
+            ->call('setPage', 2, 'history-page')
+            ->set('historyStatus', 'cooked')
+            ->assertSet('paginators.history-page', 1)
+            ->assertSeeHtml('history-dinner-'.$cooked->id)
+            ->assertDontSeeHtml('history-dinner-'.$cancelled->id)
+            ->assertSee('Planned')
+            ->assertSee('Cooked')
+            ->set('historyRecipe', (string) $cancelledRecipe->id)
+            ->assertDontSeeHtml('history-dinner-'.$cooked->id);
     }
 }

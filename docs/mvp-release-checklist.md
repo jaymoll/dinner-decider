@@ -1,6 +1,6 @@
 # Dinner Decider MVP release checklist
 
-Status: Stage 6 automated quality gate passed; staging and recovery-operations gates remain open
+Status: Stage 7 implemented and locally verified; staging and recovery-operations gates remain open
 Evidence date: 13 August 2026
 
 ## Executable baseline
@@ -18,6 +18,16 @@ Environment: Sail on Docker Desktop 29.6.1, PHP 8.5.8, Laravel 13.20.0, Livewire
 | Composer validate/platform | Pass: strict lock validation and all platform requirements satisfied |
 | Locked Composer/npm audits | Pass, 0 Composer advisories and 0 npm vulnerabilities |
 | Optimized config/routes/views smoke | Pass; `optimize` and `about` succeeded, caches cleared afterward |
+
+## Stage 7 local implementation evidence
+
+- Favourites: the unique user/recipe pivot, policy seam, idempotent actions, catalogue/detail controls, URL filter, query bound, archive preservation, and recommendation tie-break are covered by `FavouriteManagementTest` and the recommendation suites.
+- History: lifecycle events are written inside the existing plan/duplicate/cancel/restore/cook transactions. `DinnerHistoryTest` covers exact/repeated/idempotent sequences, rollback, stable pagination, owner/status/recipe filters, Amsterdam DST boundaries, immutable edited/archived/deleted snapshots, replan independence, isolation, and bounded queries.
+- Decision Mode: pure versioned hash ordering, pantry/favourite/history lexicographic factors, explanations, bounded exclusions, empty/small pools, route protection, revalidated planning, duplicate occurrences, projections, and constant query count are covered by the Decision suites and `ProductRoutesTest`.
+- Upgrade rehearsal: four pre-Stage-7 occurrences remained four after migration; six events were reconstructed (four Planned plus the known Cooked and Cancelled transitions). Events lacking an honest timestamp are deliberately not invented.
+- MySQL inspection: `recipe_favourites` has the unique `(user_id, recipe_id)` and reverse recipe index; lifecycle events have the planned-dinner timeline and actor indexes plus required cascade/null behavior. `EXPLAIN ANALYZE` used the favourite composite index and an indexed history range scan; no additional index was justified.
+- Browser journey: signed-in seeded Decision Mode rerolled, planned Spinach Omelette, created reservations/grocery projections, required shortage confirmation at cooking, and displayed new Planned/Cooked history evidence. At the mobile breakpoint there was no horizontal overflow; accessible control names, keyboard activation, loading disablement, and a clean application console were confirmed.
+- Final gate: 174 tests with 606 assertions pass on MySQL; Pint passes, Larastan level 7 reports no errors, and the Vite production build succeeds (only the existing optional Fontaine optimization warning).
 
 Host PHP cannot resolve Docker's `mysql` service name and host Node/npm are absent, so container results are authoritative. The application container was intermittently marked unhealthy while its `/up` health check competed with the slow bind-mounted test run; production health behavior must be rechecked on staging.
 
@@ -80,7 +90,7 @@ Transaction evidence also covers injected grocery-generation failure with no par
 
 ## Security and accessibility review
 
-- Product routes require authentication and verified email, including groceries; ownership failures are covered across ingredient, recipe, pantry, dinner, grocery, and recommendation paths.
+- Product routes require authentication and verified email, including Decision Mode and groceries; ownership failures are covered across ingredient, recipe, favourite, pantry, dinner/history, grocery, recommendation, and decision paths.
 - State changes remain Livewire/POST actions with CSRF middleware; GET product routes are read-only. Ordering inputs are allow-listed by action signatures and model fillable attributes are explicit.
 - Fortify login/passkey throttling, password confirmation, session regeneration, email verification, 2FA and passkeys remain enabled and tested where automation is reliable.
 - Recipe images use shared managed storage with upload-success, actual content/MIME, byte and dimension checks. Forged content, SVG, GIF, oversize and unsafe dimensions are rejected; replacement/removal/rollback cleanup and null placeholders are covered. Security re-encoding is explicitly deferred pending approval of GD as a required platform extension.
@@ -93,6 +103,7 @@ Transaction evidence also covers injected grocery-generation failure with no par
 - Playwright/axe packages were not added because dependency approval is required. Run keyboard-only, focus, screen-reader spot checks, 200% zoom, light/dark mode, and 320/375/768/1024/1440 px checks manually or approve that tooling.
 - Run the two browser journeys, console/network review, passkey and 2FA secure-origin checks on staging.
 - Complete the coordinated database/image backup-and-restore drill and fill the RPO/RTO/retention/owner fields in the operations runbook.
+- Include `recipe_favourites` and `planned_dinner_status_events` in the backup/restore row-count and referential-integrity checks.
 - Verify `APP_DEBUG=false`, cookie/TLS/proxy/passkey settings and CSP report-only output on the selected host.
 - Perform a fresh staging deploy and MVP walkthrough. Only then change status from release candidate to released.
 
@@ -107,4 +118,4 @@ Transaction evidence also covers injected grocery-generation failure with no par
 7. Isolated backup/restore drill.
 8. Fresh staging deployment and walkthrough.
 
-Steps 1–5 passed on 27 July 2026. Steps 6–8 require the staging environment and production operations decisions and remain open.
+Stage 7 steps 1–6 passed locally on 13 August 2026. The staging form of step 6 plus steps 7–8 require the staging environment and production operations decisions and remain open.

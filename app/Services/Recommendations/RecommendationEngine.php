@@ -111,6 +111,7 @@ final readonly class RecommendationEngine
             $counts['missing'],
             $counts['incompatible'],
             $exactCount,
+            (bool) $recipe->getAttribute('is_favourite'),
         );
     }
 

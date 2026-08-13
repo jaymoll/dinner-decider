@@ -24,6 +24,14 @@ class RecipePolicy
     }
 
     /**
+     * Determine whether the user may manage their personal favourite for the recipe.
+     */
+    public function favourite(User $user, Recipe $recipe): bool
+    {
+        return $this->view($user, $recipe);
+    }
+
+    /**
      * Determine whether the user can create models.
      */
     public function create(User $user): bool

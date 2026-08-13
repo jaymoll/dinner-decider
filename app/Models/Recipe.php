@@ -33,6 +33,7 @@ use Illuminate\Support\Carbon;
  * @property-read Collection<int, RecipeStep> $steps
  * @property-read Collection<int, RecipeCategory> $categories
  * @property-read Collection<int, Tag> $tags
+ * @property-read Collection<int, User> $favouritedByUsers
  */
 #[Fillable(['user_id', 'name', 'description', 'default_servings', 'preparation_minutes', 'cooking_minutes', 'difficulty', 'cuisine', 'meal_type', 'notes', 'image_path', 'source_url', 'archived_at'])]
 class Recipe extends Model
@@ -74,6 +75,24 @@ class Recipe extends Model
     public function plannedDinners(): HasMany
     {
         return $this->hasMany(PlannedDinner::class);
+    }
+
+    /** @return BelongsToMany<User, $this> */
+    public function favouritedByUsers(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'recipe_favourites')->withTimestamps();
+    }
+
+    /**
+     * @param  Builder<Recipe>  $query
+     * @return Builder<Recipe>
+     */
+    public function scopeFavouritedBy(Builder $query, User $user): Builder
+    {
+        return $query->whereIn(
+            $this->qualifyColumn('id'),
+            $user->favouriteRecipes()->select($this->qualifyColumn('id')),
+        );
     }
 
     /**

@@ -14,12 +14,16 @@ use App\Models\DinnerPlan;
 use App\Models\PlannedDinner;
 use App\Models\User;
 use App\Rules\PositiveDecimalQuantity;
+use App\Enums\PlannedDinnerStatus;
+use App\Models\Recipe;
+use App\Queries\GetDinnerHistory;
 use Flux\Flux;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -35,6 +39,21 @@ new #[Title('Dinner plan')] class extends Component {
     public ?string $cookFingerprint = null;
     /** @var list<array<string, mixed>> */
     public array $unresolved = [];
+    #[Url] public string $historyRecipe = '';
+    #[Url] public string $historyStatus = '';
+    #[Url] public string $historyFrom = '';
+    #[Url] public string $historyTo = '';
+    private GetDinnerHistory $historyQuery;
+
+    public function boot(GetDinnerHistory $historyQuery): void
+    {
+        $this->historyQuery = $historyQuery;
+    }
+
+    public function updatedHistoryRecipe(): void { $this->resetPage('history-page'); unset($this->history); }
+    public function updatedHistoryStatus(): void { $this->resetPage('history-page'); unset($this->history); }
+    public function updatedHistoryFrom(): void { $this->resetPage('history-page'); unset($this->history); }
+    public function updatedHistoryTo(): void { $this->resetPage('history-page'); unset($this->history); }
 
     public function mount(EnsureDinnerPlan $ensureDinnerPlan): void
     {
@@ -149,7 +168,25 @@ new #[Title('Dinner plan')] class extends Component {
     #[Computed]
     public function history(): LengthAwarePaginator
     {
-        return PlannedDinner::query()->whereBelongsTo($this->plan)->history()->latest('updated_at')->paginate(10);
+        $status = PlannedDinnerStatus::tryFrom($this->historyStatus);
+        if (! in_array($status, [PlannedDinnerStatus::Cooked, PlannedDinnerStatus::Cancelled], true)) {
+            $status = null;
+        }
+
+        return $this->historyQuery->get(
+            $this->user(),
+            ctype_digit($this->historyRecipe) ? (int) $this->historyRecipe : null,
+            $status,
+            $this->historyFrom,
+            $this->historyTo,
+            page: $this->getPage('history-page'),
+        );
+    }
+
+    #[Computed]
+    public function historyRecipes()
+    {
+        return Recipe::query()->whereBelongsTo($this->user())->oldest('name')->get(['id', 'name']);
     }
 
     private function ownedDinner(int $id): PlannedDinner
@@ -215,8 +252,14 @@ new #[Title('Dinner plan')] class extends Component {
 
     <div class="space-y-4">
         <flux:heading size="lg">History</flux:heading>
+        <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <flux:select wire:model.live="historyRecipe" label="Recipe"><flux:select.option value="">All recipes</flux:select.option>@foreach ($this->historyRecipes as $recipe)<flux:select.option value="{{ $recipe->id }}">{{ $recipe->name }}</flux:select.option>@endforeach</flux:select>
+            <flux:select wire:model.live="historyStatus" label="Status"><flux:select.option value="">Cooked and cancelled</flux:select.option><flux:select.option value="cooked">Cooked</flux:select.option><flux:select.option value="cancelled">Cancelled</flux:select.option></flux:select>
+            <flux:input wire:model.live="historyFrom" type="date" label="From date" />
+            <flux:input wire:model.live="historyTo" type="date" label="To date" />
+        </div>
         @forelse ($this->history as $dinner)
-            <flux:card wire:key="history-dinner-{{ $dinner->id }}" class="flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div><flux:heading>{{ $dinner->recipe_name }}</flux:heading><flux:text>{{ str($dinner->status->value)->headline() }} · {{ ($dinner->cooked_at ?? $dinner->cancelled_at)?->format('d-m-Y H:i') }}</flux:text></div><div class="flex gap-2">@if ($dinner->status->value === 'cancelled')<flux:button wire:click="restore({{ $dinner->id }})" variant="ghost">Restore</flux:button>@endif<flux:button wire:click="planAgain({{ $dinner->id }})" variant="primary">Plan again</flux:button></div></flux:card>
+            <flux:card wire:key="history-dinner-{{ $dinner->id }}" class="space-y-4"><div class="flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div><flux:heading>{{ $dinner->recipe_name }}</flux:heading><flux:text>{{ str($dinner->status->value)->headline() }} · {{ ($dinner->cooked_at ?? $dinner->cancelled_at)?->timezone('Europe/Amsterdam')->format('d-m-Y H:i') }} · {{ $dinner->servings }} servings</flux:text></div><div class="flex gap-2">@if ($dinner->status->value === 'cancelled')<flux:button wire:click="restore({{ $dinner->id }})" variant="ghost">Restore</flux:button>@endif<flux:button wire:click="planAgain({{ $dinner->id }})" variant="primary">Plan again</flux:button></div></div><ol class="flex flex-wrap gap-x-5 gap-y-2" aria-label="Lifecycle for {{ $dinner->recipe_name }}">@foreach ($dinner->statusEvents as $event)<li wire:key="history-event-{{ $event->id }}" class="text-sm text-zinc-600 dark:text-zinc-300"><span class="font-medium">{{ str($event->event_type->value)->headline() }}</span> {{ $event->occurred_at->timezone('Europe/Amsterdam')->format('d-m-Y H:i') }}@if ($event->is_reconstructed) <span class="text-zinc-500">(reconstructed)</span>@endif</li>@endforeach</ol></flux:card>
         @empty
             <flux:text>No cooked or cancelled dinners yet.</flux:text>
         @endforelse

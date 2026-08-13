@@ -35,9 +35,10 @@ Dinner Decider is organized by technical role at the top level and by product fe
 | --- | --- | --- |
 | Identity and access | Registration, login, password reset, email verification, two-factor authentication, passkeys, and account settings | [`app/Actions/Fortify`](../app/Actions/Fortify), [`app/Providers/FortifyServiceProvider.php`](../app/Providers/FortifyServiceProvider.php), [`resources/views/pages/auth`](../resources/views/pages/auth) |
 | Ingredients and measurements | User-owned ingredient catalogue, aliases, packages, unit compatibility, exact decimal parsing, normalization, and display | [`app/Models/Ingredient.php`](../app/Models/Ingredient.php), [`app/Services/Measurements`](../app/Services/Measurements), [`app/ValueObjects/Quantity.php`](../app/ValueObjects/Quantity.php) |
-| Recipes | Recipe metadata, ingredient lines, ordered steps, categories, tags, images, archives, and serving scaling | [`app/Actions/Recipes`](../app/Actions/Recipes), [`app/Models/Recipe.php`](../app/Models/Recipe.php), [`app/Services/Recipes/RecipeScaler.php`](../app/Services/Recipes/RecipeScaler.php) |
+| Recipes and favourites | Recipe metadata, ingredient lines, ordered steps, categories, tags, images, archives, serving scaling, and personal favourites | [`app/Actions/Recipes`](../app/Actions/Recipes), [`app/Actions/Favourites`](../app/Actions/Favourites), [`app/Models/Recipe.php`](../app/Models/Recipe.php), [`app/Services/Recipes/RecipeScaler.php`](../app/Services/Recipes/RecipeScaler.php) |
 | Pantry | Stock entry creation and editing, merge behavior, availability, and reservation-aware balances | [`app/Actions/Pantry`](../app/Actions/Pantry), [`app/Models/PantryEntry.php`](../app/Models/PantryEntry.php), [`app/Queries/AvailablePantry.php`](../app/Queries/AvailablePantry.php) |
 | Recommendations | Read-only, deterministic recipe scoring against currently available pantry stock | [`app/Queries/GetPantryAwareRecommendations.php`](../app/Queries/GetPantryAwareRecommendations.php), [`app/Services/Recommendations/RecommendationEngine.php`](../app/Services/Recommendations/RecommendationEngine.php) |
+| Decision Mode | Seeded, explainable shortlists that refine pantry ranking with favourites and cooking history before planning through the normal boundary | [`app/Queries/GetDecisionCandidates.php`](../app/Queries/GetDecisionCandidates.php), [`app/Services/Decisions/DecisionEngine.php`](../app/Services/Decisions/DecisionEngine.php), [`app/Actions/Decisions/PlanDecisionChoice.php`](../app/Actions/Decisions/PlanDecisionChoice.php) |
 | Dinner plans and reservations | Rolling plan, recipe snapshots, serving/date/order changes, stock allocation, cancellation, restoration, and cooking | [`app/Actions/DinnerPlans`](../app/Actions/DinnerPlans), [`app/Models/PlannedDinner.php`](../app/Models/PlannedDinner.php), [`app/Services/DinnerPlans`](../app/Services/DinnerPlans) |
 | Groceries | Generated shortfalls, manual checklist items, source contributions, checked state, and regeneration | [`app/Actions/Groceries`](../app/Actions/Groceries), [`app/Models/GroceryItem.php`](../app/Models/GroceryItem.php), [`app/Services/Groceries/GroceryCalculator.php`](../app/Services/Groceries/GroceryCalculator.php) |
 
@@ -65,6 +66,8 @@ Examples:
 - [`PlanDinner.php`](../app/Actions/DinnerPlans/PlanDinner.php) snapshots a recipe, creates its requirements, locks the rolling plan, and reconciles reservations.
 - [`ReconcilePlanReservations.php`](../app/Actions/DinnerPlans/ReconcilePlanReservations.php) rebuilds reservation state in priority order under database locks and then regenerates groceries.
 - [`ToggleGroceryItemChecked.php`](../app/Actions/Groceries/ToggleGroceryItemChecked.php) owns the rules for changing checklist completion state.
+- [`AddRecipeFavourite.php`](../app/Actions/Favourites/AddRecipeFavourite.php) and `RemoveRecipeFavourite` authorize personal preference writes and remain idempotent at the unique pivot boundary.
+- [`PlanDecisionChoice.php`](../app/Actions/Decisions/PlanDecisionChoice.php) treats selected/excluded IDs as hostile, rechecks the current candidate set, and delegates occurrence creation to `PlanDinner`.
 
 Actions use a descriptive verb and expose a small public method, usually `handle(...)`. Livewire pages should call these actions instead of duplicating their transactions or domain decisions.
 
@@ -77,6 +80,13 @@ Use an action when a new operation:
 - should behave identically from more than one delivery path.
 
 ### `app/Queries`: composed read operations
+
+Stage 7 adds two representative composed reads:
+
+- [`GetDinnerHistory.php`](../app/Queries/GetDinnerHistory.php) scopes history through the user's dinner plan, applies owned-recipe/status/inclusive Amsterdam-date filters, orders by effective terminal time plus ID, paginates with `history-page`, and eager-loads lifecycle events.
+- [`GetDecisionCandidates.php`](../app/Queries/GetDecisionCandidates.php) reuses the complete pantry-ranked recommendation collection, adds a single grouped last-cooked query, and passes pure inputs to `DecisionEngine`.
+
+`PlannedDinner.status` and its terminal timestamps remain authoritative. `PlannedDinnerStatusEvent` is audit evidence for repeated transitions, not an event-sourced aggregate. Favourites remain user-owned and survive archive because archive does not delete the recipe row.
 
 Query objects handle reads that are too involved to leave in a page component or model scope. They may eager-load several relationships, build a read-specific data structure, or coordinate a calculation service.
 

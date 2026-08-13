@@ -4,6 +4,7 @@ namespace App\Actions\DinnerPlans;
 
 use App\Data\DinnerPlans\CookResult;
 use App\Enums\PlannedDinnerStatus;
+use App\Enums\PlannedDinnerStatusEventType;
 use App\Enums\RequirementCoverage;
 use App\Models\DinnerPlan;
 use App\Models\IngredientReservation;
@@ -26,7 +27,7 @@ final readonly class MarkDinnerCooked
     {
         Gate::forUser($user)->authorize('update', $dinner);
 
-        return DB::transaction(function () use ($dinner, $confirmationFingerprint): CookResult {
+        return DB::transaction(function () use ($user, $dinner, $confirmationFingerprint): CookResult {
             $plan = DinnerPlan::query()->lockForUpdate()->findOrFail($dinner->dinner_plan_id);
             $lockedDinner = PlannedDinner::query()->whereBelongsTo($plan)->lockForUpdate()->findOrFail($dinner->id);
             if ($lockedDinner->status === PlannedDinnerStatus::Cooked) {
@@ -98,7 +99,15 @@ final readonly class MarkDinnerCooked
                 $requirement->update(['unresolved_at_cooking' => $details]);
             }
             $reservations->each->delete();
-            $lockedDinner->update(['status' => PlannedDinnerStatus::Cooked, 'cooked_at' => now()]);
+            $occurredAt = now();
+            $lockedDinner->update(['status' => PlannedDinnerStatus::Cooked, 'cooked_at' => $occurredAt]);
+            $lockedDinner->statusEvents()->create([
+                'event_type' => PlannedDinnerStatusEventType::Cooked,
+                'from_status' => PlannedDinnerStatus::Planned,
+                'to_status' => PlannedDinnerStatus::Cooked,
+                'occurred_at' => $occurredAt,
+                'actor_user_id' => $user->id,
+            ]);
             $this->reconcile->handle($plan);
 
             return new CookResult(cooked: true, unresolved: $unresolved);

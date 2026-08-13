@@ -23,5 +23,6 @@ final readonly class RecommendationResult
         public int $missingCount,
         public int $incompatibleCount,
         public int $exactCount,
+        public bool $isFavourite = false,
     ) {}
 }

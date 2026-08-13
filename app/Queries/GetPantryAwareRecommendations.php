@@ -7,6 +7,7 @@ use App\Models\Recipe;
 use App\Models\User;
 use App\Services\Recommendations\RecommendationEngine;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 /**
@@ -25,16 +26,7 @@ final readonly class GetPantryAwareRecommendations
      */
     public function get(User $user, ?string $servings = null, ?int $perPage = null, int $page = 1): LengthAwarePaginator
     {
-        $pantry = $this->availablePantry->get($user);
-
-        // Score and sort the full owned catalogue before slicing so every page reflects the same
-        // global ranking rather than a database page ranked in isolation.
-        $results = Recipe::query()->whereBelongsTo($user)->active()
-            ->with(['ingredients.ingredient', 'ingredients.ingredientPackage'])
-            ->get()
-            ->map(fn (Recipe $recipe): RecommendationResult => $this->engine->score($recipe, $pantry, $servings))
-            ->sort($this->compare(...))
-            ->values();
+        $results = $this->ranked($user, $servings);
         $pageSize = $perPage ?? (int) config('recommendations.per_page', 12);
 
         return new LengthAwarePaginator(
@@ -44,6 +36,25 @@ final readonly class GetPantryAwareRecommendations
             $page,
             ['path' => request()->url(), 'query' => request()->query()],
         );
+    }
+
+    /**
+     * @param  numeric-string|null  $servings
+     * @return Collection<int, RecommendationResult>
+     */
+    public function ranked(User $user, ?string $servings = null): Collection
+    {
+        $pantry = $this->availablePantry->get($user);
+
+        // Score and sort the full owned catalogue before slicing so every consumer receives one
+        // globally ranked collection rather than independently loading or scoring database pages.
+        return Recipe::query()->whereBelongsTo($user)->active()
+            ->withExists(['favouritedByUsers as is_favourite' => fn ($query) => $query->whereKey($user->id)])
+            ->with(['ingredients.ingredient', 'ingredients.ingredientPackage'])
+            ->get()
+            ->map(fn (Recipe $recipe): RecommendationResult => $this->engine->score($recipe, $pantry, $servings))
+            ->sort($this->compare(...))
+            ->values();
     }
 
     private function compare(RecommendationResult $left, RecommendationResult $right): int
@@ -59,6 +70,11 @@ final readonly class GetPantryAwareRecommendations
             if ($comparison !== 0) {
                 return $comparison;
             }
+        }
+
+        $favouriteComparison = $right->isFavourite <=> $left->isFavourite;
+        if ($favouriteComparison !== 0) {
+            return $favouriteComparison;
         }
 
         $nameComparison = strcmp(Str::lower($left->recipe->name), Str::lower($right->recipe->name));
